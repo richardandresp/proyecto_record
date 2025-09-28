@@ -25,6 +25,10 @@ $f_centro  = (int)($_GET['centro_id']  ?? 0);
 $f_pdv     = trim($_GET['pdv']    ?? '');
 $f_asesor  = trim($_GET['asesor'] ?? '');
 
+// SOLUCIÓN SEGURA PARA SCOPE
+$scope_raw = filter_input(INPUT_GET, 'scope', FILTER_UNSAFE_RAW);
+$scope = is_string($scope_raw) ? $scope_raw : '';
+
 // WHERE base (para KPIs y capa inicial Zonas)
 $where  = [];
 $params = [];
@@ -41,6 +45,12 @@ if ($f_asesor !== '') {
   $where[] = "h.cedula LIKE ?";
   $params[] = "%$f_asesor%";
 }
+
+// Scope (clic en tarjetas)
+if     ($scope === 'pend') { $where[] = "h.estado = 'pendiente'"; }
+elseif ($scope === 'venc') { $where[] = "h.estado = 'vencido'"; }
+elseif ($scope === 'resp') { $where[] = "(h.estado IN ('respondido_lider','respondido_admin'))"; }
+elseif ($scope === 'all')  { /* sin condición extra */ }
 
 // Visibilidad por rol
 $join = '';
@@ -96,45 +106,58 @@ include __DIR__ . '/../includes/header.php';
 include __DIR__ . '/../includes/spinner.html';
 ?>
 <style>
+  /* Alineación consistente en filtros */
+  
+
   /* Sangrías + resaltado por nivel para el drill-down */
-  #tbl-drill tbody tr.lvl-1 td:nth-child(2) { padding-left: .25rem; }
-  #tbl-drill tbody tr.lvl-2 td:nth-child(2) { padding-left: 1.75rem; }
-  #tbl-drill tbody tr.lvl-3 td:nth-child(2) { padding-left: 3.25rem; }
-  #tbl-drill tbody tr.lvl-4 td:nth-child(2) { padding-left: 4.75rem; }
+  #tbl-drill tbody tr.lvl-1 td:nth-child(2) { padding-left:.25rem; }
+  #tbl-drill tbody tr.lvl-2 td:nth-child(2) { padding-left:1.75rem; }
+  #tbl-drill tbody tr.lvl-3 td:nth-child(2) { padding-left:3.25rem; }
+  #tbl-drill tbody tr.lvl-4 td:nth-child(2) { padding-left:4.75rem; }
 
-  .btn-toggle { width: 2rem; padding: .1rem .25rem; }
+  .btn-toggle { width:2rem; padding:.1rem .25rem; }
 
-  #tbl-drill tr.lvl-1.expanded { background: #eef6ff; border-left: 4px solid #0d6efd; }
-  #tbl-drill tr.lvl-2.expanded { background: #effaf3; border-left: 4px solid #198754; }
-  #tbl-drill tr.lvl-3.expanded { background: #fff6ef; border-left: 4px solid #fd7e14; }
+  #tbl-drill tr.lvl-1.expanded { background:#eef6ff; border-left:4px solid #0d6efd; }
+  #tbl-drill tr.lvl-2.expanded { background:#effaf3; border-left:4px solid #198754; }
+  #tbl-drill tr.lvl-3.expanded { background:#fff6ef; border-left:4px solid #fd7e14; }
 
-  #tbl-drill tr.context.ctx-2 { background: #f8fbff; }
-  #tbl-drill tr.context.ctx-3 { background: #f5fbf7; }
-  #tbl-drill tr.context.ctx-4 { background: #fff8f2; }
+  #tbl-drill tr.context.ctx-2 { background:#f8fbff; }
+  #tbl-drill tr.context.ctx-3 { background:#f5fbf7; }
+  #tbl-drill tr.context.ctx-4 { background:#fff8f2; }
 
-  #tbl-drill tbody tr { transition: background-color .18s ease, border-color .18s ease; }
+  #tbl-drill tbody tr { transition:background-color .18s ease, border-color .18s ease; }
 
   /* Typeahead */
-  .dropdown-menu.typeahead { max-height: 260px; overflow:auto; }
-  .typeahead .dropdown-item.small, .typeahead .dropdown-item small { opacity: .8; }
-  .typeahead .dropdown-item.active { background: #0d6efd; color: #fff; }
+  .dropdown-menu.typeahead { max-height:260px; overflow:auto; }
+  .typeahead .dropdown-item.small, .typeahead .dropdown-item small { opacity:.8; }
+  .typeahead .dropdown-item.active { background:#0d6efd; color:#fff; }
+
+  /* KPI cards */
+  .kpi-card{ display:block; color:inherit; text-decoration:none; }
+  .kpi-card .card{ border:1px solid #e9ecef; transition:transform .12s, box-shadow .12s, border-color .12s; }
+  .kpi-card:hover .card{ transform:translateY(-2px); box-shadow:0 .5rem 1rem rgba(0,0,0,.08); }
+  .kpi-card.active .card{ border-color:#0d6efd; box-shadow:0 0 0 .25rem rgba(13,110,253,.15); }
+  .kpi-metric{ font-size:1.75rem; font-weight:600; }
+  .kpi-label{ color:#6c757d; font-size:.9rem; }
 </style>
 
 <div class="container">
   <h3>Reportes</h3>
 
   <!-- Filtros -->
-  <form class="row g-3 mb-3">
-    <div class="col-md-2">
+  <form class="row g-3 mb-3 filters" id="filtersForm">
+    <input type="hidden" name="scope" id="scope" value="<?= htmlspecialchars($scope) ?>">
+
+    <div class="col-lg-2 col-md-3">
       <label class="form-label">Desde</label>
       <input type="date" name="desde" class="form-control" value="<?= htmlspecialchars($desde) ?>">
     </div>
-    <div class="col-md-2">
+    <div class="col-lg-2 col-md-3">
       <label class="form-label">Hasta</label>
       <input type="date" name="hasta" class="form-control" value="<?= htmlspecialchars($hasta) ?>">
     </div>
 
-    <div class="col-md-2">
+    <div class="col-lg-2 col-md-3">
       <label class="form-label">Zona</label>
       <select name="zona_id" id="f_zona" class="form-select">
         <option value="0">Todas</option>
@@ -144,7 +167,7 @@ include __DIR__ . '/../includes/spinner.html';
       </select>
     </div>
 
-    <div class="col-md-2">
+    <div class="col-lg-2 col-md-3">
       <label class="form-label">Centro de Costo</label>
       <select name="centro_id" id="f_centro" class="form-select">
         <option value="0">Todos</option>
@@ -155,7 +178,7 @@ include __DIR__ . '/../includes/spinner.html';
     </div>
 
     <!-- PDV con typeahead -->
-    <div class="col-md-2 position-relative">
+    <div class="col-lg-2 col-md-3 position-relative">
       <label class="form-label">PDV (código o nombre)</label>
       <input type="text" id="inp_pdv" name="pdv" class="form-control" autocomplete="off"
              placeholder="Ej: 1053 o SHOPPING" value="<?= htmlspecialchars($f_pdv) ?>">
@@ -163,9 +186,9 @@ include __DIR__ . '/../includes/spinner.html';
       <div class="form-text">Escribe y elige un PDV de la lista.</div>
     </div>
 
-    <!-- Asesora con typeahead -->
-    <div class="col-md-2 position-relative">
-      <label class="form-label">Asesora (cédula o nombre)</label>
+    <!-- Asesora con typeahead (alineada) -->
+    <div class="col-lg-2 col-md-3 position-relative">
+      <label class="form-label">Asesora (C.C o Nom.)</label>
       <input type="text" id="inp_asesor" name="asesor" class="form-control" autocomplete="off"
              placeholder="Ej: 1030… o MARÍA" value="<?= htmlspecialchars($f_asesor) ?>">
       <div id="box_asesor" class="dropdown-menu w-100 typeahead"></div>
@@ -178,32 +201,40 @@ include __DIR__ . '/../includes/spinner.html';
     </div>
   </form>
 
-  <!-- KPIs -->
+  <!-- KPIs (clicables) -->
   <div class="row g-3 mb-4">
     <div class="col-md-3">
-      <div class="card shadow-sm"><div class="card-body">
-        <div class="text-muted small">Total hallazgos</div>
-        <div class="h3 mb-0"><?= (int)$kpi['total'] ?></div>
-      </div></div>
+      <a href="#" class="kpi-card <?= ($scope==='all'?'active':'') ?>" data-scope="all">
+        <div class="card shadow-sm"><div class="card-body">
+          <div class="kpi-label">Total hallazgos</div>
+          <div class="kpi-metric"><?= (int)$kpi['total'] ?></div>
+        </div></div>
+      </a>
     </div>
     <div class="col-md-3">
-      <div class="card shadow-sm"><div class="card-body">
-        <div class="text-muted small">Pendientes</div>
-        <div class="h3 mb-0"><?= (int)$kpi['pend'] ?></div>
-      </div></div>
+      <a href="#" class="kpi-card <?= ($scope==='pend'?'active':'') ?>" data-scope="pend">
+        <div class="card shadow-sm"><div class="card-body">
+          <div class="kpi-label">Pendientes</div>
+          <div class="kpi-metric"><?= (int)$kpi['pend'] ?></div>
+        </div></div>
+      </a>
     </div>
     <div class="col-md-3">
-      <div class="card shadow-sm"><div class="card-body">
-        <div class="text-muted small">Vencidos</div>
-        <div class="h3 mb-0"><?= (int)$kpi['venc'] ?></div>
-      </div></div>
+      <a href="#" class="kpi-card <?= ($scope==='venc'?'active':'') ?>" data-scope="venc">
+        <div class="card shadow-sm"><div class="card-body">
+          <div class="kpi-label">Vencidos</div>
+          <div class="kpi-metric"><?= (int)$kpi['venc'] ?></div>
+        </div></div>
+      </a>
     </div>
     <div class="col-md-3">
-      <div class="card shadow-sm"><div class="card-body">
-        <div class="text-muted small">Respondidos</div>
-        <span class="badge bg-success me-1">Líder: <?= (int)$kpi['resp_lider'] ?></span>
-        <span class="badge bg-primary">Admin: <?= (int)$kpi['resp_admin'] ?></span>
-      </div></div>
+      <a href="#" class="kpi-card <?= ($scope==='resp'?'active':'') ?>" data-scope="resp">
+        <div class="card shadow-sm"><div class="card-body">
+          <div class="kpi-label mb-1">Respondidos</div>
+          <span class="badge bg-success me-1">Líder: <?= (int)$kpi['resp_lider'] ?></span>
+          <span class="badge bg-primary">Admin: <?= (int)$kpi['resp_admin'] ?></span>
+        </div></div>
+      </a>
     </div>
   </div>
 
@@ -233,7 +264,7 @@ include __DIR__ . '/../includes/spinner.html';
           </tbody>
         </table>
       </div>
-      <small class="text-muted">Clic en “+” para desplegar; “–” para contraer.</small>
+      <small class="text-muted">Clic en "+" para desplegar; "-" para contraer.</small>
     </div>
   </div>
 
@@ -243,7 +274,7 @@ include __DIR__ . '/../includes/spinner.html';
       <h6 class="mb-3">Hallazgos sin respuesta del Líder (pendientes + vencidos)</h6>
       <?php
         $st = $pdo->prepare("
-          SELECT COALESCE(u.nombre, '—') AS lider,
+          SELECT COALESCE(u.nombre, '-') AS lider,
                  SUM(h.estado IN ('pendiente','vencido')) AS sin_responder
           FROM hallazgo h
           LEFT JOIN usuario u ON u.id = h.lider_id
@@ -297,6 +328,16 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   fz.addEventListener('change', applyFilter); applyFilter();
 
+  // Click en KPI cards → set scope y enviar
+  document.querySelectorAll('.kpi-card').forEach(el=>{
+    el.addEventListener('click', (ev)=>{
+      ev.preventDefault();
+      const form = document.getElementById('filtersForm');
+      document.getElementById('scope').value = el.dataset.scope || '';
+      form.submit();
+    });
+  });
+
   // Drill-down
   const body  = document.getElementById('drill-body');
   const base  = '<?= rtrim(BASE_URL,"/") ?>';
@@ -337,7 +378,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const rows = (j.ok && Array.isArray(j.pdv)) ? j.pdv : [];
         insertChildren(tr, rows.map(r => ({
           type:'pdv', id:(r.pdv_codigo||''), extra: cid,
-          label:`PDV [${escapeHtml(r.pdv_codigo||'')}] — ${escapeHtml(r.nombre_pdv||'')}`,
+          label:`PDV [${escapeHtml(r.pdv_codigo||'')}] - ${escapeHtml(r.nombre_pdv||'')}`,
           count:Number(r.conteo||0)
         })));
       } else if (level === 'pdv') {
@@ -353,7 +394,7 @@ document.addEventListener('DOMContentLoaded', () => {
         })));
       }
 
-      btn.textContent = '–'; btn.dataset.open='1';
+      btn.textContent = '-'; btn.dataset.open='1';
     } catch (e) {
       console.error(e);
       btn.textContent = '×';
@@ -366,7 +407,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // === Helpers drill ===
   function setExpanded(tr, btn, expand){
     if (expand) {
-      btn.textContent = '–';
+      btn.textContent = '-';
       btn.classList.remove('btn-outline-primary');
       btn.classList.add('btn-primary');
       btn.dataset.open = '1';
@@ -380,7 +421,11 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
   function fetchJson(url){ return fetch(url, {credentials:'same-origin'}).then(r => r.json()); }
-  function getLevel(tr){ const m = (tr.className||'').match(/lvl-(\d+)/); return m ? parseInt(m[1],10) : 0; }
+  function getLevel(tr){
+    // FIX: la expresión correcta es \d, no \\d
+    const m = (tr.className||'').match(/lvl-(\d+)/);
+    return m ? parseInt(m[1],10) : 0;
+  }
   function collapseChildren(parentTr, removeContext=false){
     const parentLvl = getLevel(parentTr);
     let next = parentTr.nextElementSibling;
@@ -451,7 +496,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const centro = escapeHtml(it.centro||'');
       const zona = escapeHtml(it.zona||'');
       return `<div class="dropdown-item" data-value="${code}">
-                <div><b>${code}</b> — ${name}</div>
+                <div><b>${code}</b> - ${name}</div>
                 <small>${centro} • ${zona}</small>
               </div>`;
     },
@@ -469,7 +514,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const ced = escapeHtml(it.cedula||'');
       const nom = escapeHtml(it.nombre||'');
       return `<div class="dropdown-item" data-value="${ced}">
-                <div><b>${ced}</b> — ${nom}</div>
+                <div><b>${ced}</b> - ${nom}</div>
               </div>`;
     },
     valueOf: (it)=> (it.cedula || '')
