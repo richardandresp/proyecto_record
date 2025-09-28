@@ -1,0 +1,9 @@
+******************
+Agregarle permitir cargar más adjuntos en la respuesta ok
+*******************
+
+visualizar todos los adjuntos desde el rol de amdinistrador/
+/cuando vemoas la repsuesta que se dio al hallazgo
+
+
+pendiente dejar todo en la normalidad sin obligación de guardar el texto en mayuscula 

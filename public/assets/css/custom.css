@@ -1,0 +1,40 @@
+/* Alinea bien las acciones y evita que se peguen a los bordes */
+.swal2-actions { margin-top: .75rem !important; }
+
+/* Borde un poco más definido en el botón “Cancelar” */
+.swal2-actions .btn-outline-secondary { border-width: 2px; }
+
+/* Títulos un poco más compactos */
+.swal2-title { font-size: 1.15rem !important; }
+
+/* (Opcional) popup con bordes más suaves si alguna vez falla el redondeo del JS */
+.swal2-popup { border-radius: 1rem !important; }
+
+/* ===== Pequeños refinamientos globales (opcionales) ===== */
+
+/* Suaviza tarjetas y tablas para verse más modernas */
+.card { border-radius: 1rem; }
+.table > :not(caption) > * > * { vertical-align: middle; }
+
+/* Realza el foco de inputs (coherente con Bootstrap) */
+.form-control:focus, .form-select:focus {
+  box-shadow: 0 0 0 .2rem rgba(13, 110, 253, .25);
+}
+
+/* Notifs */
+.notif-section-title {
+  padding: .25rem .75rem; font-size: .8rem; color:#6c757d;
+}
+.notif-item {
+  padding: .5rem .75rem;
+}
+.notif-item.unread {
+  background: #fff7e6;            /* suave */
+  border-left: 4px solid #fd7e14; /* naranja */
+}
+.notif-item .dot {
+  display:inline-block; width:.5rem; height:.5rem; border-radius:50%;
+  background:#dc3545; margin-right:.35rem; vertical-align:middle;
+}
+.notif-item .title { font-weight: 600; }
+.notif-item .meta { font-size:.75rem; color:#6c757d; }

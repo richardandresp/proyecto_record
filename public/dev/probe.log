@@ -1,0 +1,16 @@
+[2025-09-27T08:20:01+02:00] ---- NUEVA PETICIÓN ----
+[2025-09-27T08:20:01+02:00] Método: POST
+[2025-09-27T08:20:01+02:00] URI: /auditoria_app/public/dev/probe_guardar.php
+[2025-09-27T08:20:01+02:00] Referer: http://localhost/auditoria_app/public/dev/probe_form.php?hid=1
+[2025-09-27T08:20:01+02:00] UserAgent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36 Edg/140.0.0.0
+[2025-09-27T08:20:01+02:00] POST hallazgo_id=1
+[2025-09-27T08:20:01+02:00] POST respuesta len=27
+[2025-09-27T08:20:01+02:00] ADJUNTO: name=WhatsApp Image 2025-09-20 at 10.49.17 AM.jpeg; type=image/jpeg; size=118072; error=0 | MOVIDO_A=C:\xampp\htdocs\auditoria_app\public\dev/uploads/probe_20250927_082001.jpeg
+[2025-09-27T13:26:26+02:00] ---- NUEVA PETICIÓN ----
+[2025-09-27T13:26:26+02:00] Método: POST
+[2025-09-27T13:26:26+02:00] URI: /auditoria_app/public/dev/probe_guardar.php
+[2025-09-27T13:26:26+02:00] Referer: http://localhost/auditoria_app/public/dev/probe_form.php?hid=1
+[2025-09-27T13:26:26+02:00] UserAgent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36 Edg/140.0.0.0
+[2025-09-27T13:26:26+02:00] POST hallazgo_id=1
+[2025-09-27T13:26:26+02:00] POST respuesta len=25
+[2025-09-27T13:26:26+02:00] ADJUNTO: name=WhatsApp Image 2025-09-20 at 10.49.17 AM.jpeg; type=image/jpeg; size=118072; error=0 | MOVIDO_A=C:\xampp\htdocs\auditoria_app\public\dev/uploads/probe_20250927_132626.jpeg

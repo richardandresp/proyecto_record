@@ -1,0 +1,81 @@
+[2025-09-27T06:58:21-05:00] ---- NUEVA PETICIÓN ----
+[2025-09-27T06:58:21-05:00] POST hid=22 len(respuesta)=58
+[2025-09-27T06:58:21-05:00] FILES adjunto: name=WhatsApp Image 2025-09-20 at 10.49.17 AM.jpeg type=image/jpeg size=118072 err=0
+[2025-09-27T06:58:21-05:00] Respuesta insertada id=3 (creado_en=no)
+[2025-09-27T06:58:21-05:00] Adjunto movido a /auditoria_app/public/uploads/hallazgos/22/respuesta_3.jpeg
+[2025-09-27T06:58:21-05:00] Estado actualizado a respondido_admin
+[2025-09-27T06:58:21-05:00] Notificaciones enviadas.
+[2025-09-27T07:05:21-05:00] ---- NUEVA PETICIÓN ----
+[2025-09-27T07:05:21-05:00] POST hid=21 len(respuesta)=42
+[2025-09-27T07:05:21-05:00] FILES adjunto: name=soporte jose puello.jpeg type=image/jpeg size=86966 err=0
+[2025-09-27T07:05:21-05:00] Respuesta insertada id=4 (creado_en=no)
+[2025-09-27T07:05:21-05:00] Adjunto movido a /auditoria_app/public/uploads/hallazgos/21/respuesta_4.jpeg
+[2025-09-27T07:05:21-05:00] Estado actualizado a respondido_lider
+[2025-09-27T07:05:21-05:00] Notificaciones enviadas.
+[2025-09-27T07:09:49-05:00] ---- NUEVA PETICIÓN ----
+[2025-09-27T07:09:49-05:00] POST hid=22 len(respuesta)=44
+[2025-09-27T07:09:49-05:00] FILES adjunto: name=WhatsApp Image 2025-09-20 at 10.49.17 AM.jpeg type=image/jpeg size=118072 err=0
+[2025-09-27T07:09:49-05:00] Respuesta insertada id=5 (creado_en=no)
+[2025-09-27T07:09:49-05:00] Adjunto movido a /auditoria_app/public/uploads/hallazgos/22/respuesta_5.jpeg
+[2025-09-27T07:09:49-05:00] Estado actualizado a respondido_admin
+[2025-09-27T07:09:49-05:00] Notificaciones enviadas.
+[2025-09-27T10:35:32-05:00] ---- NUEVA PETICIÓN ----
+[2025-09-27T10:35:32-05:00] POST hid=25 len(respuesta)=47
+[2025-09-27T10:35:32-05:00] FILES adjunto: name=soporte jose puello.jpeg type=image/jpeg size=86966 err=0
+[2025-09-27T10:35:32-05:00] Respuesta insertada id=6 (creado_en=no)
+[2025-09-27T10:35:32-05:00] Adjunto movido a /auditoria_app/public/uploads/hallazgos/25/respuesta_6.jpeg
+[2025-09-27T10:35:32-05:00] Estado actualizado a respondido_lider
+[2025-09-27T10:54:17-05:00] ---- NUEVA PETICIÓN ----
+[2025-09-27T10:54:17-05:00] POST hid=24 len(respuesta)=77
+[2025-09-27T10:54:17-05:00] FILES adjunto: name=soporte jose puello.jpeg type=image/jpeg size=86966 err=0
+[2025-09-27T10:54:17-05:00] Respuesta insertada id=7 (creado_en=no)
+[2025-09-27T10:54:17-05:00] Adjunto movido a /auditoria_app/public/uploads/hallazgos/24/respuesta_7.jpeg
+[2025-09-27T10:54:17-05:00] Estado actualizado a respondido_lider
+[2025-09-27T11:04:07-05:00] ---- NUEVA PETICIÓN ----
+[2025-09-27T11:04:07-05:00] POST hid=26 len(respuesta)=23
+[2025-09-27T11:04:07-05:00] FILES adjunto: name=soporte jose puello.jpeg type=image/jpeg size=86966 err=0
+[2025-09-27T11:04:07-05:00] Respuesta insertada id=8 (creado_en=no)
+[2025-09-27T11:04:07-05:00] Adjunto movido a /auditoria_app/public/uploads/hallazgos/26/respuesta_8.jpeg
+[2025-09-27T11:04:07-05:00] Estado actualizado a respondido_lider
+[2025-09-27T12:41:08-05:00] ---- NUEVA PETICIÓN ----
+[2025-09-27T12:41:08-05:00] POST hid=30 len(respuesta)=29
+[2025-09-27T12:41:08-05:00] FILES adjunto: (no)
+[2025-09-27T12:41:08-05:00] Respuesta insertada id=9 (creado_en=no)
+[2025-09-27T12:41:08-05:00] Estado actualizado a respondido_lider
+[2025-09-27T14:10:00-05:00] ---- NUEVA PETICIÓN ----
+[2025-09-27T14:10:00-05:00] POST hid=32 len(respuesta)=33
+[2025-09-27T14:10:00-05:00] FILES adjunto: (no)
+[2025-09-27T14:10:00-05:00] Respuesta insertada id=10 (creado_en=no)
+[2025-09-27T14:10:00-05:00] Estado actualizado a respondido_lider
+[2025-09-27T14:31:37-05:00] ---- NUEVA PETICIÓN ----
+[2025-09-27T14:31:37-05:00] POST hid=32 len(respuesta)=63 confirmed=1
+[2025-09-27T14:31:37-05:00] Respuesta insertada id=11
+[2025-09-27T14:31:37-05:00] Estado actualizado a respondido_lider; adjuntos=2
+[2025-09-27T14:42:53-05:00] ---- NUEVA PETICIÓN ----
+[2025-09-27T14:42:53-05:00] POST hid=27 len(respuesta)=45 confirmed=1
+[2025-09-27T14:42:53-05:00] Respuesta insertada id=12
+[2025-09-27T14:42:53-05:00] Estado actualizado a respondido_lider; adjuntos=3
+[2025-09-27T14:49:48-05:00] ---- NUEVA PETICIÓN ----
+[2025-09-27T14:49:48-05:00] POST hid=30 len(respuesta)=70 confirmed=1
+[2025-09-27T14:49:48-05:00] Respuesta insertada id=13
+[2025-09-27T14:49:48-05:00] Estado actualizado a respondido_lider; adjuntos=1
+[2025-09-27T17:18:35-05:00] ---- NUEVA PETICIÓN ----
+[2025-09-27T17:18:35-05:00] POST hid=18 len(respuesta)=46 confirmed=1
+[2025-09-27T17:18:35-05:00] Respuesta insertada id=14
+[2025-09-27T17:18:35-05:00] Estado actualizado a respondido_lider; adjuntos=3
+[2025-09-27T17:24:44-05:00] ---- NUEVA PETICIÓN ----
+[2025-09-27T17:24:44-05:00] POST hid=33 len(respuesta)=49 confirmed=1
+[2025-09-27T17:24:44-05:00] Respuesta insertada id=15
+[2025-09-27T17:24:44-05:00] Estado actualizado a respondido_lider; adjuntos=3
+[2025-09-27T17:36:26-05:00] ---- NUEVA PETICIÓN ----
+[2025-09-27T17:36:26-05:00] POST hid=34 len(respuesta)=36 confirmed=1
+[2025-09-27T17:36:26-05:00] Respuesta insertada id=16
+[2025-09-27T17:36:26-05:00] Estado actualizado a respondido_lider; adjuntos=3
+[2025-09-28T11:15:35-05:00] ---- NUEVA PETICIÓN ----
+[2025-09-28T11:15:35-05:00] POST hid=15 len(respuesta)=23 confirmed=1
+[2025-09-28T11:15:35-05:00] Respuesta insertada id=17
+[2025-09-28T11:15:35-05:00] Estado actualizado a respondido_lider; adjuntos=1
+[2025-09-28T11:41:59-05:00] ---- NUEVA PETICIÓN ----
+[2025-09-28T11:41:59-05:00] POST hid=36 len(respuesta)=44 confirmed=1
+[2025-09-28T11:41:59-05:00] Respuesta insertada id=18
+[2025-09-28T11:41:59-05:00] Estado actualizado a respondido_lider; adjuntos=1

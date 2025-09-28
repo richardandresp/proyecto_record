@@ -1,0 +1,44 @@
+[2025-09-27 03:29:03] SQLSTATE[HY093]: Invalid parameter number
+[2025-09-27 03:51:56] SQLSTATE[HY093]: Invalid parameter number
+
+[2025-09-27 04:34:19] POST={"fecha":"2025-09-26","zona_id":"1","centro_id":"10","pdv_codigo":"6666","nombre_pdv":"CUTARRO","cedula":"64920490","asesor_nombre":"OLGA","raspas_faltantes":"0","faltante_dinero":"1500","sobrante_dinero":"","observaciones":"PRUEBA CUTARRO"} FILES={"evidencia":{"name":"WhatsApp Image 2025-09-20 at 11.57.48 AM.jpeg","full_path":"WhatsApp Image 2025-09-20 at 11.57.48 AM.jpeg","type":"image\/jpeg","tmp_name":"C:\\xampp\\tmp\\phpBEA3.tmp","error":0,"size":90116}} USER_ID=1
+[2025-09-27 04:34:19] ERROR: SQLSTATE[HY093]: Invalid parameter number
+
+[2025-09-27 04:41:46] POST={"fecha":"2025-09-27","zona_id":"1","centro_id":"10","pdv_codigo":"5555","nombre_pdv":"PATURRO","cedula":"64920490","asesor_nombre":"OLGA","raspas_faltantes":"0","faltante_dinero":"2000","sobrante_dinero":"0","observaciones":"PRUEBA "} FILES={"evidencia":{"name":"WhatsApp Image 2025-09-20 at 10.49.17 AM.jpeg","full_path":"WhatsApp Image 2025-09-20 at 10.49.17 AM.jpeg","type":"image\/jpeg","tmp_name":"C:\\xampp\\tmp\\php9149.tmp","error":0,"size":118072}} USER_ID=1
+[2025-09-27 04:41:46] ERROR: SQLSTATE[HY093]: Invalid parameter number
+
+[2025-09-27 04:44:31] POST={"fecha":"2025-09-27","zona_id":"1","centro_id":"10","pdv_codigo":"5555","nombre_pdv":"PATURRO","cedula":"64920490","asesor_nombre":"OLGA","raspas_faltantes":"0","faltante_dinero":"2000","sobrante_dinero":"0","observaciones":"PRUEBA "} USER=1
+[2025-09-27 04:44:31] INSERT_OK id=16 limite=2025-09-29 23:59:59 evid=/auditoria_app/public/uploads/hallazgos/16/WhatsApp_Image_2025-09-20_at_10_49_17_AM_16.jpeg
+
+[2025-09-27 04:57:53] POST={"fecha":"2025-09-27","zona_id":"1","centro_id":"10","pdv_codigo":"5555","nombre_pdv":"PATURRO","cedula":"64920490","asesor_nombre":"OLGA","raspas_faltantes":"0","faltante_dinero":"5000","sobrante_dinero":"0","observaciones":"PRUYEBA "} USER=1
+[2025-09-27 04:57:53] INSERT_OK id=17 limite=2025-09-29 23:59:59 evid=/auditoria_app/public/uploads/hallazgos/17/WhatsApp_Image_2025-09-20_at_11_57_48_AM_17.jpeg
+
+[2025-09-26 23:44:24] POST={"fecha":"2025-09-26","zona_id":"3","centro_id":"17","pdv_codigo":"5555","nombre_pdv":"PATURRO","cedula":"64920490","asesor_nombre":"OLGA","raspas_faltantes":"0","faltante_dinero":"5000","sobrante_dinero":"0","observaciones":"obsrer"} USER=1
+[2025-09-26 23:44:24] ERROR: SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry '5555' for key 'uk_pdv_codigo'
+
+[2025-09-26 23:45:25] POST={"fecha":"2025-09-26","zona_id":"3","centro_id":"17","pdv_codigo":"8888","nombre_pdv":"LA TIENDA","cedula":"64920490","asesor_nombre":"OLGA","raspas_faltantes":"0","faltante_dinero":"5000","sobrante_dinero":"0","observaciones":"obsrer"} USER=1
+[2025-09-26 23:45:25] INSERT_OK id=18 limite=2025-09-28 23:59:59 evid=/auditoria_app/public/uploads/hallazgos/18/WhatsApp_Image_2025-09-20_at_11_57_48_AM_18.jpeg
+
+[2025-09-27 00:25:29] POST={"fecha":"2025-09-27","zona_id":"3","centro_id":"16","pdv_codigo":"8545","nombre_pdv":"EL SUPERMERCADO","cedula":"92226828","asesor_nombre":"JUAN","raspas_faltantes":"0","faltante_dinero":"25000","sobrante_dinero":"0","observaciones":"prueba de señal"} USER=1
+[2025-09-27 00:25:29] INSERT_OK id=19 limite=2025-09-29 23:59:59 evid=/auditoria_app/public/uploads/hallazgos/19/WhatsApp_Image_2025-09-20_at_11_57_48_AM_19.jpeg
+
+[2025-09-27 00:34:02] POST={"fecha":"2025-09-27","zona_id":"3","centro_id":"17","pdv_codigo":"8545","nombre_pdv":"EL SUPERMERCADO","cedula":"987654123","asesor_nombre":"esteban","raspas_faltantes":"0","faltante_dinero":"5000","sobrante_dinero":"0","observaciones":"prueba dos tres"} USER=1
+[2025-09-27 00:34:02] INSERT_OK id=20 limite=2025-09-29 23:59:59 evid=/auditoria_app/public/uploads/hallazgos/20/WhatsApp_Image_2025-09-20_at_11_57_48_AM_20.jpeg
+
+[2025-09-27 00:43:34] POST={"fecha":"2025-09-27","zona_id":"3","centro_id":"17","pdv_codigo":"8545","nombre_pdv":"EL SUPERMERCADO","cedula":"64920490","asesor_nombre":"OLGA","raspas_faltantes":"0","faltante_dinero":"5000","sobrante_dinero":"0","observaciones":"preee"} USER=1
+[2025-09-27 00:43:34] INSERT_OK id=21 limite=2025-09-29 23:59:59 evid=/auditoria_app/public/uploads/hallazgos/21/RifasBot_-_Casos_de_uso_-_Meta_for_Developers_21.pdf
+
+[2025-09-27 00:47:02] POST={"fecha":"2025-09-27","zona_id":"3","centro_id":"17","pdv_codigo":"8545","nombre_pdv":"EL SUPERMERCADO","cedula":"64920490","asesor_nombre":"OLGA","raspas_faltantes":"0","faltante_dinero":"5000000","sobrante_dinero":"0","observaciones":"prueba de registro"} USER=1
+[2025-09-27 00:47:02] INSERT_OK id=22 limite=2025-09-29 23:59:59 evid=/auditoria_app/public/uploads/hallazgos/22/WhatsApp_Image_2025-09-20_at_10_49_17_AM_22.jpeg
+
+[2025-09-27 07:08:10] POST={"fecha":"2025-09-27","zona_id":"3","centro_id":"17","pdv_codigo":"2525","nombre_pdv":"LAS CASAS","cedula":"123321","asesor_nombre":"ASESOR FULANA","raspas_faltantes":"0","faltante_dinero":"5000","sobrante_dinero":"0","observaciones":"esta es una asesora nueva"} USER=1
+[2025-09-27 07:08:10] INSERT_OK id=23 limite=2025-09-29 23:59:59 evid=/auditoria_app/public/uploads/hallazgos/23/WhatsApp_Image_2025-09-20_at_11_57_48_AM_23.jpeg
+[2025-09-27T12:30:43-05:00] NOTIFY_NUEVO: Call to undefined function notify_hallazgo_to_responsables()
+[2025-09-27T12:38:37-05:00] ERROR: No autorizado (rol: lider)
+[2025-09-27T12:38:51-05:00] INPUTS fecha=2025-09-27 zona_id=0 centro_id=0 pdv_codigo= cedula= raspas=0 falt=0 sobr=0
+[2025-09-27T12:38:51-05:00] ERROR: Campos obligatorios incompletos.
+[2025-09-27T12:39:11-05:00] INPUTS fecha=2025-09-27 zona_id=3 centro_id=17 pdv_codigo=5853 cedula=85256547 raspas=1 falt=200 sobr=0
+[2025-09-27T12:39:11-05:00] RESPONSABLES lider=2 sup= aux=
+[2025-09-27T12:39:11-05:00] INSERT hallazgo id=29
+[2025-09-27T12:39:11-05:00] EVIDENCIA /auditoria_app/public/uploads/hallazgos/29/evidencia_29.jpeg
+[2025-09-27T12:39:11-05:00] NOTIFY_NUEVO: Call to undefined function notify_hallazgo_to_responsables()

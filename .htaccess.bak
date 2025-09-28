@@ -1,0 +1,5 @@
+# Evita ejecutar PHP en uploads
+<Directory "/public/uploads">
+  php_flag engine off
+  Options -ExecCGI
+</Directory>
