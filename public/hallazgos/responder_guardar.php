@@ -1,34 +1,32 @@
 <?php declare(strict_types=1);
 // public/hallazgos/responder_guardar.php
 
-session_start();
+require_once __DIR__ . '/../../includes/session_boot.php';
+require_once __DIR__ . '/../../includes/env.php';
+require_once __DIR__ . '/../../includes/db.php';
+require_once __DIR__ . '/../../includes/auth.php';
+require_once __DIR__ . '/../../includes/flash.php';
 
 ini_set('display_errors','1');
 ini_set('display_startup_errors','1');
 error_reporting(E_ALL);
 
-require_once __DIR__ . '/../../includes/env.php';
-require_once __DIR__ . '/../../includes/db.php';
-require_once __DIR__ . '/../../includes/auth.php';
-require_once __DIR__ . '/../../includes/flash.php';
-require_once __DIR__ . '/../../includes/notify.php';
-
 login_required();
 
-$uid = (int)($_SESSION['usuario_id'] ?? 0);
+// rol/uid actuales
 $rol = $_SESSION['rol'] ?? 'lectura';
+$uid = (int)($_SESSION['usuario_id'] ?? 0);
+
+// Permitir responder a estos roles (ajusta si quieres menos)
 $rolesPermitidos = ['admin','auditor','supervisor','lider','auxiliar'];
 if (!in_array($rol, $rolesPermitidos, true)) {
-  http_response_code(403);
-  exit('Sin permiso.');
+  set_flash('danger', 'No tienes permiso para responder hallazgos.');
+  header('Location: ' . BASE_URL . '/hallazgos/listado.php');
+  exit;
 }
 
-if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
-  http_response_code(405);
-  exit('Método no permitido');
-}
+$pdo = getDB();
 
-$pdo = get_pdo();
 
 // ---------- helpers ----------
 $logTrace = __DIR__ . '/var_responder_trace.log';

@@ -1,12 +1,14 @@
 <?php
-// public/admin/usuarios.php
+require_once __DIR__ . '/../../includes/session_boot.php';
 require_once __DIR__ . '/../../includes/env.php';
 require_once __DIR__ . '/../../includes/db.php';
 require_once __DIR__ . '/../../includes/auth.php';
+
 login_required();
-if (($_SESSION['rol'] ?? 'lectura') !== 'admin') { http_response_code(403); exit('Sin permiso'); }
+require_roles(['admin']);   // <-- solo admin
 
 $pdo = getDB();
+
 
 $rows = $pdo->query("
   SELECT id, nombre, email, telefono, rol, activo, must_change_password
@@ -26,7 +28,7 @@ include __DIR__ . '/../../includes/header.php';
     <table class="table table-sm table-striped align-middle">
       <thead class="table-dark">
         <tr>
-          <th>#</th><th>Nombre</th><th>Email</th><th>Rol</th><th>Estado</th><th>Debe cambiar</th><th>Acciones</th>
+          <th>#</th><th>Nombre</th><th>Email</th><th>Rol</th><th>Estado</th><th>Cambiar Pass.</th><th>Acciones</th>
         </tr>
       </thead>
       <tbody>

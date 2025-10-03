@@ -1,12 +1,14 @@
 <?php
-// public/admin/asignaciones.php
+require_once __DIR__ . '/../../includes/session_boot.php';
 require_once __DIR__ . '/../../includes/env.php';
 require_once __DIR__ . '/../../includes/db.php';
 require_once __DIR__ . '/../../includes/auth.php';
+
 login_required();
-if (($_SESSION['rol'] ?? 'lectura') !== 'admin') { http_response_code(403); exit('Sin permiso'); }
+require_roles(['admin']);   // <-- solo admin
 
 $pdo = getDB();
+
 
 // Catálogos
 $zonas   = $pdo->query("SELECT id, nombre FROM zona WHERE activo=1 ORDER BY nombre")->fetchAll();

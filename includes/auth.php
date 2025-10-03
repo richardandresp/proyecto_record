@@ -1,15 +1,18 @@
 <?php
-if (session_status() === PHP_SESSION_NONE) session_start();
+require_once __DIR__ . '/session_boot.php';
 
-function login_required() {
+function login_required(): void {
   if (empty($_SESSION['usuario_id'])) {
-    header('Location: /login.php'); exit;
+    $dest = $_SERVER['REQUEST_URI'] ?? '/auditoria_app/public/dashboard.php';
+    header('Location: ' . BASE_URL . '/login.php?redirect=' . urlencode($dest));
+    exit;
   }
 }
-function current_role() { return $_SESSION['rol'] ?? 'lectura'; }
-function require_role(array $roles) {
-  if (!in_array(current_role(), $roles, true)) {
+
+function require_roles(array $allowed): void {
+  $rol = $_SESSION['rol'] ?? 'lectura';
+  if (!in_array($rol, $allowed, true)) {
     http_response_code(403);
-    echo "No tienes permiso para acceder."; exit;
+    exit('No tienes permiso para acceder.');
   }
 }

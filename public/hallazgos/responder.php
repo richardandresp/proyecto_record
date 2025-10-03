@@ -1,24 +1,14 @@
-<?php declare(strict_types=1);
-// public/hallazgos/responder.php
-
-session_start();
-
+<?php
+require_once __DIR__ . '/../../includes/session_boot.php';
 require_once __DIR__ . '/../../includes/env.php';
 require_once __DIR__ . '/../../includes/db.php';
 require_once __DIR__ . '/../../includes/auth.php';
-require_once __DIR__ . '/../../includes/guards.php';
 
 login_required();
+require_roles(['admin','auditor','supervisor','lider','auxiliar']);
 
-$rol = $_SESSION['rol'] ?? 'lectura';
-$uid = (int)($_SESSION['usuario_id'] ?? 0);
-$rolesPermitidos = ['admin','auditor','supervisor','lider','auxiliar'];
-if (!in_array($rol, $rolesPermitidos, true)) {
-  http_response_code(403);
-  exit('No tienes permiso para responder.');
-}
+$pdo = getDB();
 
-$pdo = get_pdo();
 $id  = (int)($_GET['id'] ?? 0);
 if ($id <= 0) { http_response_code(400); exit('ID inválido.'); }
 

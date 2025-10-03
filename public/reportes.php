@@ -25,11 +25,11 @@ $f_centro  = (int)($_GET['centro_id']  ?? 0);
 $f_pdv     = trim($_GET['pdv']    ?? '');
 $f_asesor  = trim($_GET['asesor'] ?? '');
 
-// SOLUCIÓN SEGURA PARA SCOPE
+// scope seguro
 $scope_raw = filter_input(INPUT_GET, 'scope', FILTER_UNSAFE_RAW);
 $scope = is_string($scope_raw) ? $scope_raw : '';
 
-// WHERE base (para KPIs y capa inicial Zonas)
+// WHERE base
 $where  = [];
 $params = [];
 $where[] = "h.fecha BETWEEN ? AND ?";
@@ -46,13 +46,10 @@ if ($f_asesor !== '') {
   $params[] = "%$f_asesor%";
 }
 
-// Scope (clic en tarjetas)
 if     ($scope === 'pend') { $where[] = "h.estado = 'pendiente'"; }
 elseif ($scope === 'venc') { $where[] = "h.estado = 'vencido'"; }
 elseif ($scope === 'resp') { $where[] = "(h.estado IN ('respondido_lider','respondido_admin'))"; }
-elseif ($scope === 'all')  { /* sin condición extra */ }
 
-// Visibilidad por rol
 $join = '';
 if ($rol === 'lider') {
   $join = "JOIN lider_centro lc ON lc.centro_id = h.centro_id
@@ -88,7 +85,7 @@ $st = $pdo->prepare($sqlKpi);
 $st->execute($params);
 $kpi = $st->fetch() ?: ['total'=>0,'pend'=>0,'venc'=>0,'resp_lider'=>0,'resp_admin'=>0];
 
-// ZONAS capa inicial
+// Zonas para drill inicial
 $sqlTopZ = "
   SELECT z.id AS zona_id, z.nombre AS zona, COUNT(*) AS conteo
   FROM hallazgo h
@@ -106,10 +103,6 @@ include __DIR__ . '/../includes/header.php';
 include __DIR__ . '/../includes/spinner.html';
 ?>
 <style>
-  /* Alineación consistente en filtros */
-  
-
-  /* Sangrías + resaltado por nivel para el drill-down */
   #tbl-drill tbody tr.lvl-1 td:nth-child(2) { padding-left:.25rem; }
   #tbl-drill tbody tr.lvl-2 td:nth-child(2) { padding-left:1.75rem; }
   #tbl-drill tbody tr.lvl-3 td:nth-child(2) { padding-left:3.25rem; }
@@ -125,14 +118,9 @@ include __DIR__ . '/../includes/spinner.html';
   #tbl-drill tr.context.ctx-3 { background:#f5fbf7; }
   #tbl-drill tr.context.ctx-4 { background:#fff8f2; }
 
-  #tbl-drill tbody tr { transition:background-color .18s ease, border-color .18s ease; }
-
-  /* Typeahead */
   .dropdown-menu.typeahead { max-height:260px; overflow:auto; }
-  .typeahead .dropdown-item.small, .typeahead .dropdown-item small { opacity:.8; }
   .typeahead .dropdown-item.active { background:#0d6efd; color:#fff; }
 
-  /* KPI cards */
   .kpi-card{ display:block; color:inherit; text-decoration:none; }
   .kpi-card .card{ border:1px solid #e9ecef; transition:transform .12s, box-shadow .12s, border-color .12s; }
   .kpi-card:hover .card{ transform:translateY(-2px); box-shadow:0 .5rem 1rem rgba(0,0,0,.08); }
@@ -144,7 +132,6 @@ include __DIR__ . '/../includes/spinner.html';
 <div class="container">
   <h3>Reportes</h3>
 
-  <!-- Filtros -->
   <form class="row g-3 mb-3 filters" id="filtersForm">
     <input type="hidden" name="scope" id="scope" value="<?= htmlspecialchars($scope) ?>">
 
@@ -177,7 +164,6 @@ include __DIR__ . '/../includes/spinner.html';
       </select>
     </div>
 
-    <!-- PDV con typeahead -->
     <div class="col-lg-2 col-md-3 position-relative">
       <label class="form-label">PDV (código o nombre)</label>
       <input type="text" id="inp_pdv" name="pdv" class="form-control" autocomplete="off"
@@ -186,7 +172,6 @@ include __DIR__ . '/../includes/spinner.html';
       <div class="form-text">Escribe y elige un PDV de la lista.</div>
     </div>
 
-    <!-- Asesora con typeahead (alineada) -->
     <div class="col-lg-2 col-md-3 position-relative">
       <label class="form-label">Asesora (C.C o Nom.)</label>
       <input type="text" id="inp_asesor" name="asesor" class="form-control" autocomplete="off"
@@ -201,7 +186,6 @@ include __DIR__ . '/../includes/spinner.html';
     </div>
   </form>
 
-  <!-- KPIs (clicables) -->
   <div class="row g-3 mb-4">
     <div class="col-md-3">
       <a href="#" class="kpi-card <?= ($scope==='all'?'active':'') ?>" data-scope="all">
@@ -238,7 +222,6 @@ include __DIR__ . '/../includes/spinner.html';
     </div>
   </div>
 
-  <!-- Tabla única con Drill-down -->
   <div class="card shadow-sm">
     <div class="card-body">
       <h6 class="mb-3">Top Zonas → Centros → PDV → Asesoras</h6>
@@ -268,7 +251,6 @@ include __DIR__ . '/../includes/spinner.html';
     </div>
   </div>
 
-  <!-- No respondidos por Líder -->
   <div class="card mt-4 mb-5 shadow-sm">
     <div class="card-body">
       <h6 class="mb-3">Hallazgos sin respuesta del Líder (pendientes + vencidos)</h6>
@@ -309,7 +291,12 @@ include __DIR__ . '/../includes/spinner.html';
 
 <script>
 document.addEventListener('DOMContentLoaded', () => {
-  // Filtro dependiente (centro por zona en filtros)
+  // ---- helpers ----
+  function debounce(fn,ms=250){ let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a),ms); }; }
+  function escapeHtml(s){ return String(s ?? '').replace(/[&<>"']/g, m =>
+      m==='&'?'&amp;':m==='<'?'&lt;':m==='>'?'&gt;':m==='"'?'&quot;':'&#39;'); }
+
+  // Filtro dependiente (centro por zona)
   const fz = document.getElementById('f_zona');
   const fc = document.getElementById('f_centro');
   const original = Array.from(fc.options).map(o => ({v:o.value,t:o.textContent,z:o.getAttribute('data-z')||'0'}));
@@ -328,21 +315,22 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   fz.addEventListener('change', applyFilter); applyFilter();
 
-  // Click en KPI cards → set scope y enviar
+  // Click en KPI cards
   document.querySelectorAll('.kpi-card').forEach(el=>{
     el.addEventListener('click', (ev)=>{
       ev.preventDefault();
-      const form = document.getElementById('filtersForm');
       document.getElementById('scope').value = el.dataset.scope || '';
-      form.submit();
+      document.getElementById('filtersForm').submit();
     });
   });
 
-  // Drill-down
+  // ---- Drill-down ----
   const body  = document.getElementById('drill-body');
   const base  = '<?= rtrim(BASE_URL,"/") ?>';
   const desde = '<?= htmlspecialchars($desde) ?>';
   const hasta = '<?= htmlspecialchars($hasta) ?>';
+  const scope = '<?= htmlspecialchars($scope) ?>';
+  const scopeQS = scope ? `&scope=${encodeURIComponent(scope)}` : '';
 
   body.addEventListener('click', async (ev) => {
     const btn = ev.target.closest('.btn-toggle'); if (!btn) return;
@@ -350,47 +338,35 @@ document.addEventListener('DOMContentLoaded', () => {
     const level = btn.dataset.level || '';
     const isOpen = btn.dataset.open === '1';
 
-    if (isOpen) { // contraer
-      setExpanded(tr, btn, false);
-      collapseChildren(tr, true);
-      return;
-    }
+    if (isOpen) { setExpanded(tr, btn, false); collapseChildren(tr, true); return; }
 
-    // expandir
     setExpanded(tr, btn, true);
     btn.disabled = true; btn.textContent = '…';
 
     try {
       if (level === 'zona') {
         const zid = tr.getAttribute('data-zona-id');
-        const url = `${base}/api/cc_por_zona.php?zona_id=${encodeURIComponent(zid)}&desde=${encodeURIComponent(desde)}&hasta=${encodeURIComponent(hasta)}`;
-        const j = await fetchJson(url);
-        const rows = (j.ok && Array.isArray(j.centros)) ? j.centros : [];
-        insertChildren(tr, rows.map(r => ({
-          type:'centro', id:r.id,
-          label:`Centro: ${escapeHtml(r.cc)}`,
-          count: Number(r.conteo||0)
-        })));
+        const url = `${base}/cc_por_zona.php?zona_id=${encodeURIComponent(zid)}&desde=${encodeURIComponent(desde)}&hasta=${encodeURIComponent(hasta)}${scopeQS}`;
+        const rows = await fetchJsonArray(url);
+        insertChildren(tr, rows.map(r => ({ type:'centro', id:r.id, label:`Centro: ${escapeHtml(r.cc||'')}`, count:Number(r.conteo||0) })));
       } else if (level === 'centro') {
         const cid = tr.getAttribute('data-centro-id');
-        const url = `${base}/api/pdv_por_centro.php?centro_id=${encodeURIComponent(cid)}&desde=${encodeURIComponent(desde)}&hasta=${encodeURIComponent(hasta)}`;
+        const url = `${base}/api/pdv_por_centro.php?centro_id=${encodeURIComponent(cid)}&desde=${encodeURIComponent(desde)}&hasta=${encodeURIComponent(hasta)}${scopeQS}`;
         const j = await fetchJson(url);
-        const rows = (j.ok && Array.isArray(j.pdv)) ? j.pdv : [];
-        insertChildren(tr, rows.map(r => ({
-          type:'pdv', id:(r.pdv_codigo||''), extra: cid,
-          label:`PDV [${escapeHtml(r.pdv_codigo||'')}] - ${escapeHtml(r.nombre_pdv||'')}`,
-          count:Number(r.conteo||0)
-        })));
+        const rows = Array.isArray(j.pdv) ? j.pdv : [];
+        insertChildren(tr, rows.map(r => ({ type:'pdv', id:(r.pdv_codigo||''), extra: cid, label:`PDV [${escapeHtml(r.pdv_codigo||'')}] - ${escapeHtml(r.nombre_pdv||'')}`, count:Number(r.conteo||0) })));
       } else if (level === 'pdv') {
         const cid = tr.getAttribute('data-centro-id');
         const cod = tr.getAttribute('data-pdv-codigo');
         const url = `${base}/api/asesoras_por_pdv.php?centro_id=${encodeURIComponent(cid)}&pdv_codigo=${encodeURIComponent(cod)}&desde=${encodeURIComponent(desde)}&hasta=${encodeURIComponent(hasta)}`;
         const j = await fetchJson(url);
-        const rows = (j.ok && Array.isArray(j.asesoras)) ? j.asesoras : [];
+        const rows = (j && Array.isArray(j.asesoras)) ? j.asesoras : [];
         insertChildren(tr, rows.map(r => ({
-          type:'asesor',
-          label:`Asesora cédula: ${escapeHtml(r.cedula||'')}`,
-          count:Number(r.conteo||0)
+          type: 'asesor',
+          label: (r.nombre
+            ? `Asesora: ${escapeHtml(r.nombre)} (${escapeHtml(r.cedula||'')})`
+            : `Asesora cédula: ${escapeHtml(r.cedula||'')}`),
+          count: Number(r.conteo || 0)
         })));
       }
 
@@ -399,33 +375,21 @@ document.addEventListener('DOMContentLoaded', () => {
       console.error(e);
       btn.textContent = '×';
       setTimeout(()=>{ btn.textContent = '+'; btn.dataset.open='0'; setExpanded(tr, btn, false); }, 1000);
-    } finally {
-      btn.disabled = false;
-    }
+    } finally { btn.disabled = false; }
   });
 
-  // === Helpers drill ===
   function setExpanded(tr, btn, expand){
     if (expand) {
       btn.textContent = '-';
-      btn.classList.remove('btn-outline-primary');
-      btn.classList.add('btn-primary');
-      btn.dataset.open = '1';
-      tr.classList.add('expanded');
+      btn.classList.remove('btn-outline-primary'); btn.classList.add('btn-primary');
+      btn.dataset.open = '1'; tr.classList.add('expanded');
     } else {
       btn.textContent = '+';
-      btn.classList.remove('btn-primary');
-      btn.classList.add('btn-outline-primary');
-      btn.dataset.open = '0';
-      tr.classList.remove('expanded');
+      btn.classList.remove('btn-primary'); btn.classList.add('btn-outline-primary');
+      btn.dataset.open = '0'; tr.classList.remove('expanded');
     }
   }
-  function fetchJson(url){ return fetch(url, {credentials:'same-origin'}).then(r => r.json()); }
-  function getLevel(tr){
-    // FIX: la expresión correcta es \d, no \\d
-    const m = (tr.className||'').match(/lvl-(\d+)/);
-    return m ? parseInt(m[1],10) : 0;
-  }
+  function getLevel(tr){ const m = (tr.className||'').match(/lvl-(\d+)/); return m ? parseInt(m[1],10) : 0; }
   function collapseChildren(parentTr, removeContext=false){
     const parentLvl = getLevel(parentTr);
     let next = parentTr.nextElementSibling;
@@ -436,11 +400,21 @@ document.addEventListener('DOMContentLoaded', () => {
       const toRemove = next; next = next.nextElementSibling; toRemove.remove();
     }
   }
+  async function fetchJson(url){
+    const r = await fetch(url, { credentials:'same-origin' });
+    const t = await r.text();
+    if (!r.ok) throw new Error(`http ${r.status}`);
+    if (t.trim().startsWith('<')) throw new Error('bad-json'); // por si sale login/HTML
+    return JSON.parse(t);
+  }
+  async function fetchJsonArray(url){
+    const j = await fetchJson(url);
+    return Array.isArray(j) ? j : [];
+  }
   function insertChildren(parentTr, items){
     collapseChildren(parentTr, true);
     const nextLvl = getLevel(parentTr) + 1;
     let after = parentTr;
-
     if (!items.length) {
       const tr = document.createElement('tr');
       tr.className = `lvl-${nextLvl} context ctx-${nextLvl}`;
@@ -448,20 +422,16 @@ document.addEventListener('DOMContentLoaded', () => {
       after.insertAdjacentElement('afterend', tr);
       return;
     }
-
     items.forEach(it => {
       const tr = document.createElement('tr');
       tr.className = `lvl-${nextLvl} context ctx-${nextLvl}`;
-      let btnHtml = ''; let setAttrs = (node) => {};
+      let btnHtml = ''; let setAttrs = (node)=>{};
       if (it.type === 'centro') {
         btnHtml = `<button class="btn btn-sm btn-outline-primary btn-toggle" data-level="centro" data-open="0">+</button>`;
-        setAttrs = (node) => node.setAttribute('data-centro-id', String(it.id));
+        setAttrs = (node)=> node.setAttribute('data-centro-id', String(it.id));
       } else if (it.type === 'pdv') {
         btnHtml = `<button class="btn btn-sm btn-outline-primary btn-toggle" data-level="pdv" data-open="0">+</button>`;
-        setAttrs = (node) => {
-          node.setAttribute('data-centro-id', String(it.extra));
-          node.setAttribute('data-pdv-codigo', String(it.id));
-        };
+        setAttrs = (node)=> { node.setAttribute('data-centro-id', String(it.extra)); node.setAttribute('data-pdv-codigo', String(it.id)); };
       }
       tr.innerHTML = `
         <td>${btnHtml}</td>
@@ -473,13 +443,79 @@ document.addEventListener('DOMContentLoaded', () => {
       after = tr;
     });
   }
-  function escapeHtml(s){
-    return String(s ?? '').replace(/[&<>"']/g, m =>
-      m==='&'?'&amp':m==='<'?'&lt':m==='>'?'&gt':m==='"'?'&quot':'&#39;'
-    );
-  }
 
-  // ====== TYPEAHEADS ======
+  // ===== Typeahead genérico =====
+  function initTypeahead({input, menu, source, renderItem, valueOf}) {
+  if (!input || !menu) return;
+
+  let items = [];
+  let idx = -1;
+
+  const openMenu = ()=>{
+    // abre sí o sí, incluso si por CSS no aplicara .show
+    menu.classList.add('show');
+    menu.style.display = 'block';
+  };
+  const closeMenu= ()=>{
+    menu.classList.remove('show');
+    menu.style.display = '';
+    idx = -1;
+  };
+  const setItems = (arr)=>{
+    items = Array.isArray(arr) ? arr : [];
+    if (!items.length) { closeMenu(); return; }
+    menu.innerHTML = items.map(renderItem).join('');
+    openMenu();
+  };
+
+  const runQuery = async () => {
+    const q = input.value.trim();
+    if (q.length < 1) { closeMenu(); return; }     // <— 1 carácter
+    try {
+      const data = await source(q);
+      setItems(data);
+    } catch (err) {
+      console.error('typeahead error', err);
+      closeMenu();
+    }
+  };
+
+  // disparamos en input + keyup para cubrir IME y móviles
+  input.addEventListener('input', debounce(runQuery, 180));
+  input.addEventListener('keyup', debounce(runQuery, 180));
+  input.addEventListener('focus', runQuery);
+  input.addEventListener('blur', ()=> setTimeout(closeMenu, 120));
+
+  menu.addEventListener('click', (ev)=>{
+    const el = ev.target.closest('.dropdown-item'); if (!el) return;
+    const i = Array.from(menu.children).indexOf(el);
+    apply(i);
+  });
+
+  input.addEventListener('keydown', (e)=>{
+    if (!menu.classList.contains('show')) return;
+    const children = Array.from(menu.children);
+    if (e.key === 'ArrowDown') { e.preventDefault(); move(1, children); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); move(-1, children); }
+    else if (e.key === 'Enter')  { e.preventDefault(); apply(idx>=0?idx:0); }
+    else if (e.key === 'Escape') { closeMenu(); }
+  });
+
+  function move(delta, children){
+    if (!children.length) return;
+    idx = (idx + delta + children.length) % children.length;
+    children.forEach(c=>c.classList.remove('active'));
+    const cur = children[idx];
+    cur.classList.add('active');
+    cur.scrollIntoView({block:'nearest'});
+  }
+  function apply(i){
+    if (!items[i]) return;
+    input.value = valueOf(items[i]);
+    closeMenu();
+  }
+}
+  // ====== TYPEAHEADS (PDV / Asesora) ======
   const BASE = '<?= rtrim(BASE_URL,"/") ?>';
 
   initTypeahead({
@@ -488,7 +524,8 @@ document.addEventListener('DOMContentLoaded', () => {
     source: async (q)=>{
       const zid = fz?.value||'0', cid = fc?.value||'0';
       const url = `${BASE}/api/pdv_suggest.php?q=${encodeURIComponent(q)}&zona_id=${encodeURIComponent(zid)}&centro_id=${encodeURIComponent(cid)}`;
-      const r = await fetch(url,{credentials:'same-origin'}); return r.ok? (await r.json()) : [];
+      const r = await fetch(url,{ credentials:'same-origin' });
+      return r.ok ? (await r.json()) : [];
     },
     renderItem: (it)=>{
       const code = escapeHtml(it.codigo||'');
@@ -508,7 +545,8 @@ document.addEventListener('DOMContentLoaded', () => {
     menu:   document.getElementById('box_asesor'),
     source: async (q)=>{
       const url = `${BASE}/api/asesor_suggest.php?q=${encodeURIComponent(q)}`;
-      const r = await fetch(url,{credentials:'same-origin'}); return r.ok? (await r.json()) : [];
+      const r = await fetch(url,{ credentials:'same-origin' });
+      return r.ok ? (await r.json()) : [];
     },
     renderItem: (it)=>{
       const ced = escapeHtml(it.cedula||'');
@@ -520,60 +558,5 @@ document.addEventListener('DOMContentLoaded', () => {
     valueOf: (it)=> (it.cedula || '')
   });
 
-  // ---- Utilidades Typeahead ----
-  function debounce(fn,ms=250){ let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a),ms); }; }
-
-  function initTypeahead({input, menu, source, renderItem, valueOf}) {
-    if (!input || !menu) return;
-    let items = [];
-    let idx = -1;
-
-    const openMenu = ()=>{ menu.classList.add('show'); };
-    const closeMenu= ()=>{ menu.classList.remove('show'); idx=-1; };
-    const setItems = (arr)=>{
-      items = arr || [];
-      if (!items.length) { closeMenu(); return; }
-      menu.innerHTML = items.map(renderItem).join('');
-      openMenu();
-    };
-
-    input.addEventListener('input', debounce(async () => {
-      const q = input.value.trim();
-      if (q.length < 2) { closeMenu(); return; }
-      try { setItems(await source(q)); } catch { closeMenu(); }
-    }, 200));
-
-    input.addEventListener('blur', ()=> setTimeout(closeMenu, 120));
-
-    menu.addEventListener('click', (ev)=>{
-      const el = ev.target.closest('.dropdown-item'); if (!el) return;
-      const i = Array.from(menu.children).indexOf(el);
-      apply(i);
-    });
-
-    input.addEventListener('keydown', (e)=>{
-      if (!menu.classList.contains('show')) return;
-      if (e.key === 'ArrowDown') { e.preventDefault(); move(1); }
-      else if (e.key === 'ArrowUp') { e.preventDefault(); move(-1); }
-      else if (e.key === 'Enter')  { e.preventDefault(); apply(idx>=0?idx:0); }
-      else if (e.key === 'Escape') { closeMenu(); }
-    });
-
-    function move(delta){
-      const children = Array.from(menu.children);
-      if (!children.length) return;
-      idx = (idx + delta + children.length) % children.length;
-      children.forEach(c=>c.classList.remove('active'));
-      const cur = children[idx];
-      cur.classList.add('active');
-      cur.scrollIntoView({block:'nearest'});
-    }
-
-    function apply(i){
-      if (!items[i]) return;
-      input.value = valueOf(items[i]);
-      closeMenu();
-    }
-  }
 });
 </script>

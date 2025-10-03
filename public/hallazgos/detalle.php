@@ -1,13 +1,14 @@
 <?php
-// public/hallazgos/detalle.php
-declare(strict_types=1);
-
+require_once __DIR__ . '/../../includes/session_boot.php';
 require_once __DIR__ . '/../../includes/env.php';
 require_once __DIR__ . '/../../includes/db.php';
 require_once __DIR__ . '/../../includes/auth.php';
+
 login_required();
+require_roles(['admin','auditor','supervisor','lider','auxiliar']);
 
 $pdo = getDB();
+
 $id  = (int)($_GET['id'] ?? 0);
 if ($id <= 0) { http_response_code(400); exit('ID inválido.'); }
 

@@ -1,6 +1,5 @@
-<?php
-// includes/flash.php
-if (session_status() === PHP_SESSION_NONE) session_start();
+<?php require_once __DIR__ . '/session_boot.php';
+
 
 function set_flash(string $type, string $message): void {
   // success | error | warning | info | question

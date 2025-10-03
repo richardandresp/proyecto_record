@@ -42,3 +42,6 @@
 [2025-09-27T12:39:11-05:00] INSERT hallazgo id=29
 [2025-09-27T12:39:11-05:00] EVIDENCIA /auditoria_app/public/uploads/hallazgos/29/evidencia_29.jpeg
 [2025-09-27T12:39:11-05:00] NOTIFY_NUEVO: Call to undefined function notify_hallazgo_to_responsables()
+[2025-10-02T23:30:23-05:00] NOTIFY_NUEVO: Call to undefined function notify_nuevo_hallazgo()
+[2025-10-02T23:31:22-05:00] NOTIFY_NUEVO: Call to undefined function notify_nuevo_hallazgo()
+[2025-10-02T23:32:15-05:00] NOTIFY_NUEVO: Call to undefined function notify_nuevo_hallazgo()

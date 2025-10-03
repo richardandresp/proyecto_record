@@ -1,15 +1,15 @@
 <?php
 // public/hallazgos/nuevo.php
-
-session_start();
+require_once __DIR__ . '/../../includes/session_boot.php';
 require_once __DIR__ . '/../../includes/env.php';
 require_once __DIR__ . '/../../includes/db.php';
 require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/guards.php';
 
-require_role(['admin','auditor']); // ajusta si aplica
+login_required();
+require_roles(['admin','auditor']);  // admin o auditor
 
-$pdo   = get_pdo();
+$pdo   = getDB();
 $zonas = $pdo->query("SELECT id, nombre FROM zona WHERE activo=1 ORDER BY nombre")->fetchAll(PDO::FETCH_ASSOC);
 
 $hoy = (new DateTime('now'))->format('Y-m-d');
@@ -27,7 +27,6 @@ include __DIR__ . '/../../includes/header.php';
     <div class="row g-3">
       <div class="col-12 col-md-3">
         <label class="form-label">Fecha *</label>
-        <!-- NO permitir futuro -->
         <input type="date" class="form-control" name="fecha" id="fecha"
                value="<?= htmlspecialchars($hoy) ?>"
                max="<?= htmlspecialchars($hoy) ?>" required>
@@ -52,7 +51,7 @@ include __DIR__ . '/../../includes/header.php';
         <div class="form-text" id="hint_cc"></div>
       </div>
 
-      <!-- PDV: botones junto al CÓDIGO -->
+      <!-- PDV -->
       <div class="col-6 col-md-3">
         <label class="form-label">Código PDV *</label>
         <div class="input-group">
@@ -66,7 +65,7 @@ include __DIR__ . '/../../includes/header.php';
         <input type="text" class="form-control" name="nombre_pdv" id="nombre_pdv" required>
       </div>
 
-      <!-- ASESOR: botón ahora junto a la CÉDULA (simétrico) -->
+      <!-- Asesor -->
       <div class="col-6 col-md-3">
         <label class="form-label">Cédula Asesor *</label>
         <div class="input-group">
@@ -112,7 +111,7 @@ include __DIR__ . '/../../includes/header.php';
   </form>
 </div>
 
-<!-- Modal Buscar PDV (opcional) -->
+<!-- Modal Buscar PDV -->
 <div class="modal fade" id="modalPDV" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-lg modal-dialog-scrollable">
     <div class="modal-content">
@@ -168,10 +167,9 @@ document.addEventListener('DOMContentLoaded', () => {
   const hintPDV = document.getElementById('hint_pdv');
   const hintAs  = document.getElementById('hint_asesor');
 
-  // Debounce utilidad
   function debounce(fn, ms=350){ let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a), ms); }; }
 
-  // ====== Fecha: no futuro (validación extra) ======
+  // ====== Fecha: no futuro ======
   function checkFecha(){
     hintFecha.textContent = '';
     const val = fechaIn.value;
@@ -187,47 +185,43 @@ document.addEventListener('DOMContentLoaded', () => {
   fechaIn.addEventListener('change', checkFecha);
   fechaIn.addEventListener('blur', checkFecha);
 
-  // ====== Cargar CC por zona (usa /api/cc_catalogo.php) ======
-  selZona?.addEventListener('change', async () => {
-    const zonaId = selZona.value;
-    selCC.innerHTML = '<option value="">Cargando...</option>';
+  // ====== Cargar CC por zona (API: centros_por_zona.php) ======
+  async function loadCentros(zonaId){
+    selCC.innerHTML = '<option value="">Cargando centros…</option>';
     hintCC.textContent = '';
     if (!zonaId) {
       selCC.innerHTML = '<option value="">Seleccione una zona primero...</option>';
       return;
     }
     try {
-      const url = `${BASE}/api/cc_catalogo.php?zona_id=${encodeURIComponent(zonaId)}`;
+      const url = `${BASE}/api/centros_por_zona.php?zona_id=${encodeURIComponent(zonaId)}`;
       const resp = await fetch(url, { credentials: 'same-origin' });
-      const j = await resp.json();
+      const txt  = await resp.text();
+      if (!resp.ok) throw new Error(txt || `http ${resp.status}`);
+      if (txt.trim().startsWith('<')) throw new Error('html-response');
+      const j = JSON.parse(txt);
+
+      const arr = (j && j.ok && Array.isArray(j.centros)) ? j.centros : [];
       selCC.innerHTML = '';
-      if (!resp.ok || !j.ok) {
-        selCC.innerHTML = '<option value="">Error cargando centros</option>';
-        hintCC.textContent = j.error || 'No se pudieron cargar los centros de costo.';
-        return;
-      }
-      const arr = j.centros || [];
       if (!arr.length) {
         selCC.innerHTML = '<option value="">(Sin centros activos)</option>';
         hintCC.textContent = 'La zona seleccionada no tiene centros activos.';
         return;
       }
-      const first = document.createElement('option');
-      first.value=''; first.textContent='Seleccione...';
-      selCC.appendChild(first);
-      arr.forEach(cc => {
-        const op = document.createElement('option');
-        op.value = String(cc.id);
-        op.textContent = cc.nombre;
-        selCC.appendChild(op);
-      });
-    } catch {
-      selCC.innerHTML = '<option value="">Error de red</option>';
+      selCC.appendChild(new Option('Seleccione...', ''));
+      arr.forEach(cc => selCC.appendChild(new Option(cc.nombre, cc.id)));
+    } catch(e){
+      console.error(e);
+      selCC.innerHTML = '<option value="">Error cargando centros</option>';
       hintCC.textContent = 'No se pudieron cargar los centros de costo.';
     }
-  });
+  }
 
-  // ====== LOOKUP AUTOMÁTICO: PDV por CÓDIGO (+ centro) ======
+  selZona?.addEventListener('change', () => loadCentros(selZona.value));
+  // Carga inicial si ya hay una zona seleccionada (o deja vacío)
+  if (selZona && selZona.value) loadCentros(selZona.value);
+
+  // ====== LOOKUP PDV por código + centro ======
   async function lookupPDV(){
     hintPDV.textContent = '';
     const codigo = (pdvCod.value || '').trim();
@@ -250,7 +244,7 @@ document.addEventListener('DOMContentLoaded', () => {
   pdvCod.addEventListener('input', debounce(lookupPDV, 500));
   selCC.addEventListener('change', () => { if (pdvCod.value.trim()) lookupPDV(); });
 
-  // ====== LOOKUP AUTOMÁTICO: Asesor por CÉDULA ======
+  // ====== LOOKUP Asesor por cédula ======
   async function lookupAsesor(){
     hintAs.textContent = '';
     const ced = (cedula.value || '').trim();
@@ -271,9 +265,8 @@ document.addEventListener('DOMContentLoaded', () => {
   cedula.addEventListener('blur', lookupAsesor);
   cedula.addEventListener('input', debounce(lookupAsesor, 500));
 
-  // ====== Botones de búsqueda (simétricos) ======
+  // ====== Botones de búsqueda PDV ======
   document.getElementById('btnBuscarPDV')?.addEventListener('click', async () => {
-    // abre el modal de PDV para búsqueda por nombre/código
     if (!selZona.value) { alert('Seleccione Zona'); return; }
     if (!selCC.value)   { alert('Seleccione Centro de costo'); return; }
     const pdvCentroSel = document.getElementById('pdv_centro');
@@ -327,7 +320,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function escapeHtml(s){
     return String(s ?? '').replace(/[&<>"']/g, m =>
-      m==='&'?'&amp;':m==='<'?'&lt;':m==='>'?'&gt;':m==='"'?'&quot;':'&#39;'
+      m==='&' ? '&amp;' : m==='<' ? '&lt;' : m==='>' ? '&gt;' : m==='"' ? '&quot;' : '&#39;'
     );
   }
 
@@ -340,13 +333,12 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   document.querySelectorAll('input.money').forEach(el => el.addEventListener('blur', () => normalizeMoneyInput(el)));
 
-  // ====== Submit con validaciones finales ======
+  // ====== Submit con validaciones ======
   let sending = false;
   form.addEventListener('submit', async (ev) => {
     if (sending) return;
     ev.preventDefault();
 
-    // Fecha: no futuro
     checkFecha();
     if (fechaIn.classList.contains('is-invalid')) return;
 
@@ -383,7 +375,6 @@ document.addEventListener('DOMContentLoaded', () => {
     })).isConfirmed;
     if (!ok) return;
 
-    // Normaliza dinero antes de enviar
     document.querySelectorAll('input.money').forEach(el => {
       const raw = (el.value || '').toString();
       const num = Number(raw.replace(/[^\d,-.]/g,'').replace(/\./g,'').replace(',', '.'));

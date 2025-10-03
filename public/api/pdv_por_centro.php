@@ -1,33 +1,52 @@
-<?php declare(strict_types=1);
-// public/api/pdv_por_centro.php
-session_start();
-
+<?php
+require_once __DIR__ . '/../../includes/session_boot.php';
 require_once __DIR__ . '/../../includes/env.php';
 require_once __DIR__ . '/../../includes/db.php';
-require_once __DIR__ . '/../../includes/auth.php';
 
 header('Content-Type: application/json; charset=utf-8');
+ini_set('display_errors', 0);
+error_reporting(E_ALL & ~E_NOTICE & ~E_WARNING);
+
+if (empty($_SESSION['usuario_id'])) {
+  http_response_code(401);
+  echo json_encode(['ok'=>false,'error'=>'unauthorized']); exit;
+}
 
 try {
-  login_required();
-  $pdo = get_pdo();
+  $pdo = getDB();
 
   $centro_id = (int)($_GET['centro_id'] ?? 0);
-  if ($centro_id <= 0) { echo json_encode(['ok'=>false,'error'=>'centro_id requerido']); exit; }
+  if ($centro_id <= 0) { echo json_encode(['ok'=>true,'pdv'=>[]]); exit; }
 
   $today = (new DateTimeImmutable('today'))->format('Y-m-d');
   $d30   = (new DateTimeImmutable('-30 days'))->format('Y-m-d');
-  $desde = preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['desde'] ?? '') ? $_GET['desde'] : $d30;
-  $hasta = preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['hasta'] ?? '') ? $_GET['hasta'] : $today;
 
-  // WHERE base
-  $where  = ["h.centro_id = ?", "h.fecha BETWEEN ? AND ?"];
-  $params = [$centro_id, $desde, $hasta];
+  $desde = $_GET['desde'] ?? $d30;
+  $hasta = $_GET['hasta'] ?? $today;
+  $desde = preg_match('/^\d{4}-\d{2}-\d{2}$/',$desde) ? $desde : $d30;
+  $hasta = preg_match('/^\d{4}-\d{2}-\d{2}$/',$hasta) ? $hasta : $today;
 
-  // Visibilidad por rol
+  $where  = [];
+  $params = [];
+
+  $where[] = "h.centro_id = ?";
+  $params[] = $centro_id;
+
+  $where[] = "h.fecha BETWEEN ? AND ?";
+  $params[] = $desde; $params[] = $hasta;
+
+  // scope -> estado
+$scope = (string)($_GET['scope'] ?? '');
+if     ($scope === 'pend') $where[] = "h.estado = 'pendiente'";
+elseif ($scope === 'venc') $where[] = "h.estado = 'vencido'";
+elseif ($scope === 'resp') $where[] = "h.estado IN ('respondido_lider','respondido_admin')";
+
+
+  // visibilidad por rol
   $rol = $_SESSION['rol'] ?? 'lectura';
   $uid = (int)($_SESSION['usuario_id'] ?? 0);
   $join = '';
+
   if ($rol === 'lider') {
     $join = "JOIN lider_centro lc ON lc.centro_id = h.centro_id
              AND h.fecha >= lc.desde
@@ -52,7 +71,7 @@ try {
     SELECT h.pdv_codigo, h.nombre_pdv, COUNT(*) AS conteo
     FROM hallazgo h
     $join
-    WHERE ".implode(' AND ', $where)."
+    WHERE ".implode(' AND ',$where)."
     GROUP BY h.pdv_codigo, h.nombre_pdv
     ORDER BY conteo DESC, h.nombre_pdv ASC
   ";
@@ -60,7 +79,8 @@ try {
   $st->execute($params);
   $rows = $st->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
-  echo json_encode(['ok'=>true, 'pdv'=>$rows], JSON_UNESCAPED_UNICODE);
+  echo json_encode(['ok'=>true,'pdv'=>$rows], JSON_UNESCAPED_UNICODE);
 } catch (Throwable $e) {
-  echo json_encode(['ok'=>false, 'error'=>'Error cargando PDV']);
+  http_response_code(500);
+  echo json_encode(['ok'=>false,'error'=>'server']);
 }

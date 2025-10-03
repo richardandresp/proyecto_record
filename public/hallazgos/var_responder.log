@@ -1,3 +1,4 @@
 [2025-09-27T06:31:57-05:00] SQLSTATE[42S22]: Column not found: 1054 Unknown column 'creado_en' in 'field list'
 [2025-09-27T06:33:38-05:00] SQLSTATE[42S22]: Column not found: 1054 Unknown column 'creado_en' in 'field list'
 [2025-09-27T10:43:30-05:00] ERROR: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'creado_en' in 'field list'
+[2025-10-03T02:03:36-05:00] NOTIFY: Call to undefined function notify_hallazgo_to_responsables()

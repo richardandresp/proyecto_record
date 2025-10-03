@@ -1,13 +1,14 @@
 <?php
-// public/admin/usuario_editar.php
+require_once __DIR__ . '/../../includes/session_boot.php';
 require_once __DIR__ . '/../../includes/env.php';
 require_once __DIR__ . '/../../includes/db.php';
 require_once __DIR__ . '/../../includes/auth.php';
 
 login_required();
-if (($_SESSION['rol'] ?? 'lectura') !== 'admin') { http_response_code(403); exit('Sin permiso'); }
+require_roles(['admin']);   // <-- solo admin
 
 $pdo = getDB();
+
 $id = (int)($_GET['id'] ?? 0);
 if ($id <= 0) { http_response_code(400); exit('ID inválido'); }
 

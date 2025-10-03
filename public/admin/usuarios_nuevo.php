@@ -1,12 +1,12 @@
 <?php
-// public/admin/usuarios_nuevo.php
+require_once __DIR__ . '/../../includes/session_boot.php';
 require_once __DIR__ . '/../../includes/env.php';
 require_once __DIR__ . '/../../includes/db.php';
 require_once __DIR__ . '/../../includes/auth.php';
-login_required();
-if (($_SESSION['rol'] ?? 'lectura') !== 'admin') { http_response_code(403); exit('Sin permiso'); }
 
-$roles = ['auditor','supervisor','lider','auxiliar','lectura','admin']; // puedes ocultar 'admin' si no deseas crear más admins
+login_required();
+require_roles(['admin']);   // <-- solo admin
+
 $pdo = getDB();
 
 $msg = ''; $err = ''; $tempPass = null;

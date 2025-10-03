@@ -1,8 +1,29 @@
 <?php
-// public/login.php
 require_once __DIR__ . '/../includes/env.php';
 require_once __DIR__ . '/../includes/db.php';
-if (session_status() === PHP_SESSION_NONE) session_start();
+require_once __DIR__ . '/../includes/session_boot.php'; // <— ÚNICO arranque de sesión
+
+// --------- SESIÓN COMPARTIDA CON LA SUITE ----------
+if (session_status() !== PHP_SESSION_ACTIVE) {
+  session_set_cookie_params([
+    'lifetime' => 0,
+    'path'     => '/',   // clave para que la cookie sirva en /auditoria_app y /suite_operativa
+    'secure'   => false,
+    'httponly' => true,
+    'samesite' => 'Lax',
+  ]);
+  session_name('suite_sess');     // mismo nombre que usa la Suite
+  session_start();
+}
+
+// Redirección deseada (por defecto: tu dashboard)
+$redirect = $_GET['redirect'] ?? $_POST['redirect'] ?? (BASE_URL . '/dashboard.php');
+
+// Si ya hay sesión, no mostrar login: ve directo al destino
+if (!empty($_SESSION['usuario_id'])) {
+  header('Location: ' . $redirect);
+  exit;
+}
 
 $error = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -27,12 +48,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           $_SESSION['rol']        = $u['rol'];
 
           if (!$isDemo && (int)$u['must_change_password'] === 1) {
-            // Forzar cambio de contraseña
+            // Forzar cambio de contraseña (mantén tu flujo actual)
             header('Location: ' . BASE_URL . '/cambiar_password.php?first=1');
             exit;
           }
 
-          header('Location: ' . BASE_URL . '/dashboard.php');
+          // ÉXITO: si venimos desde la Suite, volverá al Home de la Suite.
+          // Si no hubo redirect, irá a tu dashboard por defecto.
+          $dest = $_POST['redirect'] ?? (BASE_URL . '/dashboard.php');
+          header('Location: ' . $dest);
           exit;
         }
       }
@@ -67,6 +91,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           <?php endif; ?>
 
           <form method="post">
+            <!-- Mantén el redirect que trae la Suite -->
+            <input type="hidden" name="redirect" value="<?= htmlspecialchars($redirect) ?>">
+
             <div class="mb-3">
               <label class="form-label">Email</label>
               <input name="email" type="email" class="form-control" required value="<?= htmlspecialchars($_POST['email'] ?? '') ?>">

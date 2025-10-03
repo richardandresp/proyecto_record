@@ -1,13 +1,12 @@
 <?php
-// public/hallazgos/editar_guardar.php
-session_start();
+require_once __DIR__ . '/../../includes/session_boot.php';
 require_once __DIR__ . '/../../includes/env.php';
 require_once __DIR__ . '/../../includes/db.php';
 require_once __DIR__ . '/../../includes/auth.php';
 
-require_role(['admin','auditor']); // solo admin/auditor edita
+login_required();require_roles(['admin','auditor','supervisor','lider','auxiliar']);
 
-$pdo = get_pdo();
+$pdo = getDB();
 
 function money_to_float(?string $s): float {
   if ($s === null) return 0.0;

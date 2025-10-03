@@ -1,13 +1,14 @@
 <?php
-// public/admin/pdv.php
-session_start();
+require_once __DIR__ . '/../../includes/session_boot.php';
 require_once __DIR__ . '/../../includes/env.php';
 require_once __DIR__ . '/../../includes/db.php';
 require_once __DIR__ . '/../../includes/auth.php';
 
-require_role(['admin','auditor']); // define quién puede administrar
+login_required();
+require_roles(['admin']);   // <-- solo admin
 
-$pdo = get_pdo();
+$pdo = getDB();
+
 
 // Cargar catálogos
 $zonas = $pdo->query("SELECT id,nombre FROM zona WHERE activo=1 ORDER BY nombre")->fetchAll(PDO::FETCH_ASSOC);

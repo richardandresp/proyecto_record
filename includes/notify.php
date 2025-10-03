@@ -61,7 +61,6 @@ function notify_many(
 function hallazgo_responsables(int $hallazgo_id): array {
   $pdo = get_pdo();
 
-  // Trae hallazgo con snapshot y datos mínimos
   $st = $pdo->prepare("
     SELECT h.id, h.fecha, h.zona_id, h.centro_id,
            h.lider_id, h.supervisor_id, h.auxiliar_id
@@ -133,7 +132,7 @@ function build_hallazgo_nuevo_title_body(array $h): array {
 }
 
 /**
- * Notifica “nuevo hallazgo” a responsables (líder/supervisor/auxiliar) y opcionalmente a admins/auditores.
+ * Notifica “nuevo hallazgo” a responsables (y opcionalmente admins/auditores).
  */
 function notify_nuevo_hallazgo(array $h, bool $notifyAdminsAlso = false): void {
   $pdo = get_pdo();
@@ -155,11 +154,7 @@ function notify_nuevo_hallazgo(array $h, bool $notifyAdminsAlso = false): void {
 }
 
 /**
- * NUEVA: Notifica a los responsables de un hallazgo con título/cuerpo personalizados.
- *  - $h: debe tener al menos id; si trae pdv_codigo/centro/zona, puedes usarlos en los textos que envíes.
- *  - $codigo: código lógico de la notificación (ej. 'H_RESPUESTA', 'H_NUEVO', etc.)
- *  - $excludeUserId: excluye a quien generó el evento (opcional).
- *  - $alsoAdmins: true para incluir admin/auditor además de los responsables.
+ * Notifica a los responsables de un hallazgo con título/cuerpo personalizados.
  */
 function notify_hallazgo_to_responsables(
   array $h,
@@ -207,9 +202,38 @@ function notify_hallazgo_respondido(array $h): void {
   $rs = $pdo->query("SELECT id FROM usuario WHERE activo=1 AND rol IN ('admin','auditor')")->fetchAll(PDO::FETCH_COLUMN);
   foreach ($rs as $u) $uids[] = (int)$u;
 
-  // c) responsables del hallazgo
+  // c) responsables
   $resps = hallazgo_responsables((int)$h['id']);
   $uids  = array_merge($uids, $resps);
 
   notify_many(array_unique($uids), $titulo, $cuerpo, $url, 'hallazgo', (int)$h['id'], 'H_RESPUESTA');
+}
+
+/* ========= Helpers para marcar leídas / contar ========= */
+
+/** Marca UNA notificación como leída (si pertenece al usuario). */
+function notif_mark_read(int $notifId, int $userId): bool {
+  if ($notifId <= 0 || $userId <= 0) return false;
+  $pdo = get_pdo();
+  $st = $pdo->prepare("UPDATE notificacion SET leido_en = NOW()
+                       WHERE id = ? AND usuario_id = ? AND leido_en IS NULL");
+  return $st->execute([$notifId, $userId]);
+}
+
+/** Marca TODAS las notificaciones del usuario como leídas. */
+function notif_mark_all_read(int $userId): bool {
+  if ($userId <= 0) return false;
+  $pdo = get_pdo();
+  $st = $pdo->prepare("UPDATE notificacion SET leido_en = NOW()
+                       WHERE usuario_id = ? AND leido_en IS NULL");
+  return $st->execute([$userId]);
+}
+
+/** Devuelve el contador de no leídas. */
+function notif_unread_count(int $userId): int {
+  if ($userId <= 0) return 0;
+  $pdo = get_pdo();
+  $st = $pdo->prepare("SELECT COUNT(*) FROM notificacion WHERE usuario_id=? AND leido_en IS NULL");
+  $st->execute([$userId]);
+  return (int)$st->fetchColumn();
 }

@@ -1,15 +1,13 @@
 <?php
-// public/hallazgos/editar.php
-session_start();
+require_once __DIR__ . '/../../includes/session_boot.php';
 require_once __DIR__ . '/../../includes/env.php';
 require_once __DIR__ . '/../../includes/db.php';
 require_once __DIR__ . '/../../includes/auth.php';
 
 login_required();
-$rol = $_SESSION['rol'] ?? 'lectura';
-if (!in_array($rol, ['admin','auditor'], true)) { http_response_code(403); exit('No autorizado'); }
+require_roles(['admin']);   // <-- solo admin
 
-$pdo = get_pdo();
+$pdo = getDB();
 
 $id = (int)($_GET['id'] ?? 0);
 if ($id <= 0) { http_response_code(400); exit('ID inválido'); }

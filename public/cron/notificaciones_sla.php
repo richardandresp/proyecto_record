@@ -1,11 +1,15 @@
 <?php
-declare(strict_types=1);
+require_once __DIR__ . '/../../includes/session_boot.php';
 require_once __DIR__ . '/../../includes/env.php';
 require_once __DIR__ . '/../../includes/db.php';
-require_once __DIR__ . '/../../includes/notify.php';
+require_once __DIR__ . '/../../includes/auth.php';
+require_once __DIR__ . '/../../includes/hallazgo_repo.php';
 
-// 1) Hallazgos que cruzaron a vencido en los últimos 15 min (o marca / estado recién cambiado)
-$pdo = get_pdo();
+login_required();
+require_roles(['admin']);   // <-- solo admin
+
+$pdo = getDB();
+
 $st = $pdo->query("
   SELECT id FROM hallazgo 
   WHERE estado='vencido'

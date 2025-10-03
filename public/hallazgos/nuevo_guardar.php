@@ -1,27 +1,15 @@
-<?php declare(strict_types=1);
-
-// public/hallazgos/nuevo_guardar.php
-
-session_start();
-
-ini_set('display_errors','1');
-ini_set('display_startup_errors','1');
-error_reporting(E_ALL);
-
+<?php
+require_once __DIR__ . '/../../includes/session_boot.php';
 require_once __DIR__ . '/../../includes/env.php';
 require_once __DIR__ . '/../../includes/db.php';
 require_once __DIR__ . '/../../includes/auth.php';
-require_once __DIR__ . '/../../includes/flash.php';
-require_once __DIR__ . '/../../includes/notify.php';
+require_once __DIR__ . '/../../includes/flash.php';   // <-- ¡importante!
 
 login_required();
-$rol = $_SESSION['rol'] ?? 'lectura';
-if (!in_array($rol, ['admin','auditor'], true)) {
-  http_response_code(403);
-  exit('No autorizado');
-}
+require_roles(['admin','auditor']);
 
-$pdo = get_pdo();
+$pdo = getDB();
+
 $uid = (int)($_SESSION['usuario_id'] ?? 0);
 
 // Función para limpiar texto sin convertir a mayúsculas

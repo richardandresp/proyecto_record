@@ -1,14 +1,15 @@
 <?php
-// public/hallazgos/listado.php
-declare(strict_types=1);
-
-session_start();
+require_once __DIR__ . '/../../includes/session_boot.php';
 require_once __DIR__ . '/../../includes/env.php';
 require_once __DIR__ . '/../../includes/db.php';
 require_once __DIR__ . '/../../includes/auth.php';
-login_required();
+require_once __DIR__ . '/../../includes/hallazgo_repo.php';
 
-$pdo = get_pdo();
+login_required();
+require_roles(['admin','auditor','supervisor','lider','auxiliar']); // lectura para todos estos
+
+$pdo = getDB();
+
 $rol = $_SESSION['rol'] ?? 'lectura';
 $uid = (int)($_SESSION['usuario_id'] ?? 0);
 
@@ -43,29 +44,10 @@ function build_url(array $override = []): string {
   return BASE_URL . '/hallazgos/listado.php?' . http_build_query($qs);
 }
 
-// ---------- marcar vencidos por SLA ----------
+// ---------- marcar vencidos por SLA (opcional, simple; sin notificaciones aquí) ----------
 $pdo->exec("UPDATE hallazgo 
             SET estado='vencido', actualizado_en=NOW()
             WHERE estado='pendiente' AND NOW() > fecha_limite");
-
-            // Notificar hallazgos que acaban de pasar a vencido (una sola vez)
-try {
-  $st = $pdo->query("
-    SELECT h.id
-    FROM hallazgo h
-    WHERE h.estado='vencido'
-      AND TIMESTAMPDIFF(MINUTE, h.actualizado_en, NOW()) <= 2  -- recién actualizados (~2 min)
-  ");
-  $ids = $st->fetchAll(PDO::FETCH_COLUMN);
-  foreach ($ids as $hid) {
-    $h = load_hallazgo_with_names((int)$hid);
-    if ($h) {
-      $titulo = 'Hallazgo vencido #' . (int)$h['id'];
-      $cuerpo = 'SLA de 48h superado. Zona ' . ($h['zona_nombre'] ?? '') . ', CC ' . ($h['centro_nombre'] ?? '');
-      notify_hallazgo_to_responsables($h, 'H_VENCIDO', $titulo, $cuerpo);
-    }
-  }
-} catch (Throwable $e) {}
 
 // ---------- catálogos ----------
 $zonas   = $pdo->query("SELECT id, nombre FROM zona WHERE activo=1 ORDER BY nombre")->fetchAll(PDO::FETCH_ASSOC);
@@ -126,8 +108,8 @@ $page = max(1, (int)($_GET['page'] ?? 1));
 $offset = ($page - 1) * $per_page;
 
 // ---------- WHERE base ----------
-$where  = [];
-$params = [];
+$where   = [];
+$params  = [];
 
 // fechas inclusivas por día
 $where[]  = "DATE(h.fecha) >= ? AND DATE(h.fecha) <= ?";
@@ -168,35 +150,37 @@ if ($f_sobr_mode === 1) {
   $params[] = $norm($f_sobr_val);
 }
 
-// ---------- visibilidad por rol (snapshot + fallback por vigencia si snapshot es NULL) ----------
-$join = '';
+// ---------- visibilidad por rol ----------
+// Usamos LEFT JOIN + fallback si snapshot (h.lider_id / h.supervisor_id / h.auxiliar_id) está NULL.
+$roleJoin = '';
 if (!in_array($rol, ['admin','auditor'], true)) {
   if ($rol === 'lider') {
-    $join   = "LEFT JOIN lider_centro lc 
-               ON lc.centro_id = h.centro_id
-              AND h.fecha >= lc.desde
-              AND (lc.hasta IS NULL OR h.fecha <= lc.hasta)
-              AND lc.usuario_id = ?";
-    $where[] = "(h.lider_id = ? OR (h.lider_id IS NULL AND lc.usuario_id IS NOT NULL))";
+    // primer placeholder aparece en el JOIN -> debe ir al inicio de $params en orden
     array_unshift($params, $uid);
+    $roleJoin = "LEFT JOIN lider_centro lc 
+                   ON lc.centro_id = h.centro_id
+                  AND h.fecha >= lc.desde
+                  AND (lc.hasta IS NULL OR h.fecha <= lc.hasta)
+                  AND lc.usuario_id = ?";
+    $where[]  = "(h.lider_id = ? OR (h.lider_id IS NULL AND lc.usuario_id IS NOT NULL))";
     $params[] = $uid;
   } elseif ($rol === 'supervisor') {
-    $join   = "LEFT JOIN supervisor_zona sz 
-               ON sz.zona_id = h.zona_id
-              AND h.fecha >= sz.desde
-              AND (sz.hasta IS NULL OR h.fecha <= sz.hasta)
-              AND sz.usuario_id = ?";
-    $where[] = "(h.supervisor_id = ? OR (h.supervisor_id IS NULL AND sz.usuario_id IS NOT NULL))";
     array_unshift($params, $uid);
+    $roleJoin = "LEFT JOIN supervisor_zona sz
+                   ON sz.zona_id = h.zona_id
+                  AND h.fecha >= sz.desde
+                  AND (sz.hasta IS NULL OR h.fecha <= sz.hasta)
+                  AND sz.usuario_id = ?";
+    $where[]  = "(h.supervisor_id = ? OR (h.supervisor_id IS NULL AND sz.usuario_id IS NOT NULL))";
     $params[] = $uid;
   } elseif ($rol === 'auxiliar') {
-    $join   = "LEFT JOIN auxiliar_centro ax 
-               ON ax.centro_id = h.centro_id
-              AND h.fecha >= ax.desde
-              AND (ax.hasta IS NULL OR h.fecha <= ax.hasta)
-              AND ax.usuario_id = ?";
-    $where[] = "(h.auxiliar_id = ? OR (h.auxiliar_id IS NULL AND ax.usuario_id IS NOT NULL))";
     array_unshift($params, $uid);
+    $roleJoin = "LEFT JOIN auxiliar_centro ax
+                   ON ax.centro_id = h.centro_id
+                  AND h.fecha >= ax.desde
+                  AND (ax.hasta IS NULL OR h.fecha <= ax.hasta)
+                  AND ax.usuario_id = ?";
+    $where[]  = "(h.auxiliar_id = ? OR (h.auxiliar_id IS NULL AND ax.usuario_id IS NOT NULL))";
     $params[] = $uid;
   }
 }
@@ -204,11 +188,11 @@ if (!in_array($rol, ['admin','auditor'], true)) {
 $where_sql = "WHERE " . implode(' AND ', $where);
 
 // ---------- total ----------
-$countSql = "SELECT COUNT(*) 
+$countSql = "SELECT COUNT(*)
              FROM hallazgo h
              JOIN zona z ON z.id = h.zona_id
              JOIN centro_costo c ON c.id = h.centro_id
-             $join
+             $roleJoin
              $where_sql";
 $stc = $pdo->prepare($countSql);
 $stc->execute($params);
@@ -223,7 +207,7 @@ $sql = "SELECT h.id, h.fecha, h.nombre_pdv, h.pdv_codigo, h.cedula,
         FROM hallazgo h
         JOIN zona z ON z.id = h.zona_id
         JOIN centro_costo c ON c.id = h.centro_id
-        $join
+        $roleJoin
         $where_sql
         ORDER BY h.fecha DESC, h.id DESC
         LIMIT ? OFFSET ?";
@@ -283,19 +267,17 @@ include __DIR__ . '/../../includes/header.php';
       <select name="zona_id" id="f_zona" class="form-select form-select-sm">
         <option value="0">Todas</option>
         <?php foreach($zonas as $z): ?>
-          <option value="<?= $z['id'] ?>" <?= ($f_zona===$z['id'])?'selected':'' ?>><?= htmlspecialchars($z['nombre']) ?></option>
+          <option value="<?= (int)$z['id'] ?>" <?= ($f_zona===(int)$z['id'])?'selected':'' ?>><?= htmlspecialchars($z['nombre']) ?></option>
         <?php endforeach; ?>
       </select>
     </div>
     <div class="col-md-2">
       <label class="form-label small fw-bold">Centro de Costo</label>
-      <!-- CLAVE: data-current-centro dice si vino desde URL (o 0 -> Todos) -->
       <select name="centro_id" id="f_centro" class="form-select form-select-sm"
               data-current-centro="<?= $hasCentro ? (int)$f_centro : 0 ?>">
         <option value="0">Todos</option>
         <?php foreach($centros as $c): ?>
-          <!-- Quitamos selected aquí; lo decide el JS según URL o 'Todos' -->
-          <option data-z="<?= $c['zona_id'] ?>" value="<?= $c['id'] ?>">
+          <option data-z="<?= (int)$c['zona_id'] ?>" value="<?= (int)$c['id'] ?>">
             <?= htmlspecialchars($c['nombre']) ?>
           </option>
         <?php endforeach; ?>
@@ -320,7 +302,7 @@ include __DIR__ . '/../../includes/header.php';
       </select>
     </div>
 
-    <!-- Filtro Raspas -->
+    <!-- Filtros avanzados (Raspas/Faltante/Sobrante) -->
     <div class="col-md-2">
       <label class="form-label small fw-bold">Raspas</label>
       <select name="raspas_mode" id="raspas_mode" class="form-select form-select-sm">
@@ -338,11 +320,10 @@ include __DIR__ . '/../../includes/header.php';
             <option value="<?= $op ?>" <?= $f_raspas_op===$op?'selected':'' ?>><?= $op ?></option>
           <?php endforeach; ?>
         </select>
-        <input type="number" class="form-control form-control-sm" name="raspas_val" value="<?= htmlspecialchars($f_raspas_val) ?>" placeholder="valor">
+        <input type="number" class="form-control form-select-sm" name="raspas_val" value="<?= htmlspecialchars($f_raspas_val) ?>" placeholder="valor">
       </div>
     </div>
 
-    <!-- Filtro Faltante -->
     <div class="col-md-2">
       <label class="form-label small fw-bold">Faltante $</label>
       <select name="falt_mode" id="falt_mode" class="form-select form-select-sm">
@@ -360,11 +341,10 @@ include __DIR__ . '/../../includes/header.php';
             <option value="<?= $op ?>" <?= $f_falt_op===$op?'selected':'' ?>><?= $op ?></option>
           <?php endforeach; ?>
         </select>
-        <input type="text" class="form-control form-control-sm" name="falt_val" value="<?= htmlspecialchars($f_falt_val) ?>" placeholder="monto">
+        <input type="text" class="form-control form-select-sm" name="falt_val" value="<?= htmlspecialchars($f_falt_val) ?>" placeholder="monto">
       </div>
     </div>
 
-    <!-- Filtro Sobrante -->
     <div class="col-md-2">
       <label class="form-label small fw-bold">Sobrante $</label>
       <select name="sobr_mode" id="sobr_mode" class="form-select form-select-sm">
@@ -382,7 +362,7 @@ include __DIR__ . '/../../includes/header.php';
             <option value="<?= $op ?>" <?= $f_sobr_op===$op?'selected':'' ?>><?= $op ?></option>
           <?php endforeach; ?>
         </select>
-        <input type="text" class="form-control form-control-sm" name="sobr_val" value="<?= htmlspecialchars($f_sobr_val) ?>" placeholder="monto">
+        <input type="text" class="form-control form-select-sm" name="sobr_val" value="<?= htmlspecialchars($f_sobr_val) ?>" placeholder="monto">
       </div>
     </div>
 
@@ -446,7 +426,6 @@ include __DIR__ . '/../../includes/header.php';
                   <a class="btn btn-outline-warning" href="<?= $editUrl ?>" title="Editar"><i class="bi bi-pencil-square"></i></a>
                 <?php endif; ?>
 
-                <!-- Botón modal mejorado -->
                 <button
                   type="button"
                   class="btn btn-outline-dark"
@@ -553,25 +532,18 @@ include __DIR__ . '/../../includes/header.php';
 
     function apply(){
       const z = fz.value;
-      const prev = fc.value; // seleccionado antes de reconstruir
+      const prev = fc.value;
       fc.innerHTML = '';
 
-      // siempre agrega "Todos"
       const optAll = opts.find(o => o.value === '0');
       if (optAll) fc.appendChild(optAll);
 
-      // agrega centros según zona
       opts.forEach(o => {
-        if (o.value === '0') return; // ya agregado
+        if (o.value === '0') return;
         const oz = o.getAttribute('data-z');
         if (z === '0' || oz === z) fc.appendChild(o);
       });
 
-      // Selección priorizada:
-      // 1) Si NO vino centro en la URL => fuerza "Todos"
-      // 2) Si vino en la URL y existe en el combo actual => selecciónalo
-      // 3) Si el anterior aún existe (cambio de zona) => mantenlo
-      // 4) Si nada coincide => "Todos"
       if (currentFromUrl === '0') {
         fc.value = '0';
       } else if (fc.querySelector(`option[value="${CSS.escape(currentFromUrl)}"]`)) {
@@ -584,10 +556,9 @@ include __DIR__ . '/../../includes/header.php';
     }
 
     fz.addEventListener('change', apply);
-    apply(); // inicial
+    apply();
   })();
 
-  // Mostrar/ocultar filtros avanzados
   function toggleAdv(idSelect, idWrap){
     const sel = document.getElementById(idSelect);
     const wrap = document.getElementById(idWrap);
@@ -598,7 +569,6 @@ include __DIR__ . '/../../includes/header.php';
   toggleAdv('falt_mode','falt_adv');
   toggleAdv('sobr_mode','sobr_adv');
 
-  // Modal acciones: poblar datos
   const modalEl = document.getElementById('modalAccion');
   modalEl.addEventListener('show.bs.modal', function (event) {
     const btn = event.relatedTarget;
@@ -607,7 +577,6 @@ include __DIR__ . '/../../includes/header.php';
     const respUrl = '<?= BASE_URL ?>/hallazgos/responder.php?id=' + id;
     const editUrl = '<?= BASE_URL ?>/hallazgos/editar.php?id=' + id;
 
-    // Campos
     this.querySelector('#m-id').textContent = id;
     this.querySelector('#m-fecha').textContent = btn.getAttribute('data-fecha') || '';
     this.querySelector('#m-zona').textContent = btn.getAttribute('data-zona') || '';
@@ -616,7 +585,6 @@ include __DIR__ . '/../../includes/header.php';
     this.querySelector('#m-cedula').textContent = btn.getAttribute('data-cedula') || '';
     this.querySelector('#m-raspas').textContent = btn.getAttribute('data-raspas') || '0';
 
-    // Formatea montos simples en el modal
     function money(v){
       const n = parseFloat(v||0);
       return isNaN(n) ? '' : new Intl.NumberFormat('es-CO',{style:'currency',currency:'COP',minimumFractionDigits:2}).format(n);
@@ -624,7 +592,6 @@ include __DIR__ . '/../../includes/header.php';
     this.querySelector('#m-faltante').textContent = money(btn.getAttribute('data-faltante'));
     this.querySelector('#m-sobrante').textContent = money(btn.getAttribute('data-sobrante'));
 
-    // Estado como badge
     const est = (btn.getAttribute('data-estado') || '').toLowerCase();
     let badge = '<span class="badge bg-secondary">'+est+'</span>';
     if (est==='pendiente') badge = '<span class="badge bg-warning text-dark">Pendiente</span>';
@@ -635,14 +602,12 @@ include __DIR__ . '/../../includes/header.php';
 
     this.querySelector('#m-fechalim').textContent = btn.getAttribute('data-fechalim') || '';
 
-    // Evidencia si existe
     const evid = btn.getAttribute('data-evidencia') || '';
     const wrap = this.querySelector('#m-evid-wrap');
     const aev  = this.querySelector('#m-evidencia');
     if (evid) { wrap.style.display='block'; aev.href=evid; }
     else { wrap.style.display='none'; aev.removeAttribute('href'); }
 
-    // Botones
     this.querySelector('#m-ver').href = viewUrl;
     <?php if (in_array($rol, ['admin','auditor','supervisor','lider','auxiliar'], true)): ?>
       this.querySelector('#m-resp').href = respUrl;
@@ -654,7 +619,6 @@ include __DIR__ . '/../../includes/header.php';
 </script>
 
 <?php
-// Footer opcional (no rompe si no existe)
 $__footer = __DIR__ . '/../../includes/footer.php';
 if (is_file($__footer)) {
   include $__footer;
