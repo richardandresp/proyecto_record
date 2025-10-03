@@ -6,6 +6,8 @@ require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/hallazgo_repo.php';
 
 login_required();
+require_once __DIR__ . '/../../includes/perm.php';
+require_perm('auditoria.access');
 require_roles(['admin','auditor','supervisor','lider','auxiliar']); // lectura para todos estos
 
 $pdo = getDB();

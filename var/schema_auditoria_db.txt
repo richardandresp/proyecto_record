@@ -1,0 +1,1035 @@
+Esquema de base de datos: auditoria_db
+================================================================================
+
+
+--------------------------------------------------------------------------------
+LISTADO DE TABLAS
+--------------------------------------------------------------------------------
+- asesor
+- asesor_centro
+- auxiliar_centro
+- centro_costo
+- config
+- hallazgo
+- hallazgo_respuesta
+- hallazgo_respuesta_adjunto
+- hallazgo_respuesta_archivo
+- lider_centro
+- modulo
+- notificacion
+- notificacion_backup_20250926_232200
+- pdv
+- permiso
+- rol
+- rol_permiso
+- supervisor_zona
+- usuario
+- usuario_modulo
+- usuario_permiso
+- usuario_rol
+- zona
+
+--------------------------------------------------------------------------------
+TABLA: asesor
+--------------------------------------------------------------------------------
+
+COLUMNAS:
+Field                    Type             Null     Key        Default    Extra               
+id                       int(11)          NO       PRI                   auto_increment      
+nombre                   varchar(160)     NO                                                 
+documento                varchar(40)      YES      UNI                                       
+activo                   tinyint(1)       NO                  1                              
+cedula                   varchar(20)      YES      UNI                                       
+
+INDICES:
+Key_name             Non_unique Seq        Column     Card       Type      
+PRIMARY              0          1          id         7          BTREE     
+uk_asesor_doc        0          1          documento  7          BTREE     
+uk_asesor_cedula     0          1          cedula     7          BTREE     
+
+FOREIGN KEYS:
+(sin claves foráneas)
+
+MUESTRAS (hasta 5 filas):
+Total filas: 9
+ - {"id":1,"nombre":"MARIA","documento":null,"activo":1,"cedula":null}
+ - {"id":2,"nombre":"PEDRO","documento":null,"activo":1,"cedula":null}
+ - {"id":3,"nombre":"PEPITO PEREZ","documento":"123456","activo":1,"cedula":"123456"}
+ - {"id":4,"nombre":"JUANITA PEREZ","documento":"987654321","activo":1,"cedula":"987654321"}
+ - {"id":5,"nombre":"OLGA","documento":"64920490","activo":1,"cedula":"64920490"}
+
+CREATE TABLE:
+CREATE TABLE `asesor` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `nombre` varchar(160) NOT NULL,
+  `documento` varchar(40) DEFAULT NULL,
+  `activo` tinyint(1) NOT NULL DEFAULT 1,
+  `cedula` varchar(20) DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_asesor_doc` (`documento`),
+  UNIQUE KEY `uk_asesor_cedula` (`cedula`)
+) ENGINE=InnoDB AUTO_INCREMENT=10 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+
+--------------------------------------------------------------------------------
+TABLA: asesor_centro
+--------------------------------------------------------------------------------
+
+COLUMNAS:
+Field                    Type             Null     Key        Default    Extra               
+id                       int(11)          NO       PRI                   auto_increment      
+asesor_id                int(11)          NO       MUL                                       
+centro_id                int(11)          NO       MUL                                       
+desde                    date             NO                                                 
+hasta                    date             YES                                                
+
+INDICES:
+Key_name             Non_unique Seq        Column     Card       Type      
+PRIMARY              0          1          id         0          BTREE     
+idx_ac_asesor        1          1          asesor_id  0          BTREE     
+idx_ac_centro        1          1          centro_id  0          BTREE     
+
+FOREIGN KEYS:
+- fk_ac_asesor: (asesor_id) -> asesor.id  [ON UPDATE CASCADE ON DELETE CASCADE]
+- fk_ac_centro: (centro_id) -> centro_costo.id  [ON UPDATE CASCADE ON DELETE CASCADE]
+
+MUESTRAS (hasta 5 filas):
+Total filas: 0
+
+CREATE TABLE:
+CREATE TABLE `asesor_centro` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `asesor_id` int(11) NOT NULL,
+  `centro_id` int(11) NOT NULL,
+  `desde` date NOT NULL,
+  `hasta` date DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_ac_asesor` (`asesor_id`),
+  KEY `idx_ac_centro` (`centro_id`),
+  CONSTRAINT `fk_ac_asesor` FOREIGN KEY (`asesor_id`) REFERENCES `asesor` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `fk_ac_centro` FOREIGN KEY (`centro_id`) REFERENCES `centro_costo` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+
+--------------------------------------------------------------------------------
+TABLA: auxiliar_centro
+--------------------------------------------------------------------------------
+
+COLUMNAS:
+Field                    Type             Null     Key        Default    Extra               
+id                       int(11)          NO       PRI                   auto_increment      
+usuario_id               int(11)          NO       MUL                                       
+centro_id                int(11)          NO       MUL                                       
+desde                    date             NO       MUL                                       
+hasta                    date             YES                                                
+
+INDICES:
+Key_name             Non_unique Seq        Column     Card       Type      
+PRIMARY              0          1          id         2          BTREE     
+idx_ax_centro        1          1          centro_id  2          BTREE     
+idx_ax_usuario       1          1          usuario_id 2          BTREE     
+idx_ax_vigencia      1          1          desde      2          BTREE     
+idx_ax_vigencia      1          2          hasta      2          BTREE     
+
+FOREIGN KEYS:
+- fk_ax_centro: (centro_id) -> centro_costo.id  [ON UPDATE CASCADE ON DELETE CASCADE]
+- fk_ax_usuario: (usuario_id) -> usuario.id  [ON UPDATE CASCADE ON DELETE RESTRICT]
+
+MUESTRAS (hasta 5 filas):
+Total filas: 2
+ - {"id":1,"usuario_id":5,"centro_id":1,"desde":"2025-09-26","hasta":"2025-09-25"}
+ - {"id":2,"usuario_id":5,"centro_id":1,"desde":"2025-09-25","hasta":null}
+
+CREATE TABLE:
+CREATE TABLE `auxiliar_centro` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `usuario_id` int(11) NOT NULL,
+  `centro_id` int(11) NOT NULL,
+  `desde` date NOT NULL,
+  `hasta` date DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_ax_centro` (`centro_id`),
+  KEY `idx_ax_usuario` (`usuario_id`),
+  KEY `idx_ax_vigencia` (`desde`,`hasta`),
+  CONSTRAINT `fk_ax_centro` FOREIGN KEY (`centro_id`) REFERENCES `centro_costo` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `fk_ax_usuario` FOREIGN KEY (`usuario_id`) REFERENCES `usuario` (`id`) ON UPDATE CASCADE
+) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+
+--------------------------------------------------------------------------------
+TABLA: centro_costo
+--------------------------------------------------------------------------------
+
+COLUMNAS:
+Field                    Type             Null     Key        Default    Extra               
+id                       int(11)          NO       PRI                   auto_increment      
+zona_id                  int(11)          NO       MUL                                       
+nombre                   varchar(160)     NO                                                 
+codigo                   varchar(50)      YES      UNI                                       
+activo                   tinyint(1)       NO                  1                              
+
+INDICES:
+Key_name             Non_unique Seq        Column     Card       Type      
+PRIMARY              0          1          id         14         BTREE     
+uk_cc_codigo         0          1          codigo     14         BTREE     
+idx_cc_zona          1          1          zona_id    7          BTREE     
+
+FOREIGN KEYS:
+- fk_cc_zona: (zona_id) -> zona.id  [ON UPDATE CASCADE ON DELETE RESTRICT]
+
+MUESTRAS (hasta 5 filas):
+Total filas: 15
+ - {"id":1,"zona_id":1,"nombre":"Pradera","codigo":"CCN","activo":1}
+ - {"id":2,"zona_id":1,"nombre":"Mogambo","codigo":"CCS","activo":1}
+ - {"id":3,"zona_id":1,"nombre":"Dorado","codigo":"CCA","activo":1}
+ - {"id":4,"zona_id":1,"nombre":"Granja","codigo":"","activo":1}
+ - {"id":9,"zona_id":1,"nombre":"Mocarí","codigo":null,"activo":1}
+
+CREATE TABLE:
+CREATE TABLE `centro_costo` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `zona_id` int(11) NOT NULL,
+  `nombre` varchar(160) NOT NULL,
+  `codigo` varchar(50) DEFAULT NULL,
+  `activo` tinyint(1) NOT NULL DEFAULT 1,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_cc_codigo` (`codigo`),
+  KEY `idx_cc_zona` (`zona_id`),
+  CONSTRAINT `fk_cc_zona` FOREIGN KEY (`zona_id`) REFERENCES `zona` (`id`) ON UPDATE CASCADE
+) ENGINE=InnoDB AUTO_INCREMENT=20 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+
+--------------------------------------------------------------------------------
+TABLA: config
+--------------------------------------------------------------------------------
+
+COLUMNAS:
+Field                    Type             Null     Key        Default    Extra               
+clave                    varchar(50)      NO       PRI                                       
+valor                    varchar(255)     NO                                                 
+
+INDICES:
+Key_name             Non_unique Seq        Column     Card       Type      
+PRIMARY              0          1          clave      2          BTREE     
+
+FOREIGN KEYS:
+(sin claves foráneas)
+
+MUESTRAS (hasta 5 filas):
+Total filas: 2
+ - {"clave":"MAIL_EXPORT_TO","valor":""}
+ - {"clave":"SLA_HORAS","valor":"60"}
+
+CREATE TABLE:
+CREATE TABLE `config` (
+  `clave` varchar(50) NOT NULL,
+  `valor` varchar(255) NOT NULL,
+  PRIMARY KEY (`clave`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+
+--------------------------------------------------------------------------------
+TABLA: hallazgo
+--------------------------------------------------------------------------------
+
+COLUMNAS:
+Field                    Type             Null     Key        Default    Extra               
+id                       int(11)          NO       PRI                   auto_increment      
+fecha                    date             NO       MUL                                       
+zona_id                  int(11)          NO       MUL                                       
+centro_id                int(11)          NO       MUL                                       
+asesor_id                int(11)          YES      MUL                                       
+cedula                   varchar(40)      YES                                                
+nombre_pdv               varchar(200)     NO                                                 
+pdv_codigo               varchar(40)      YES                                                
+raspas_faltantes         int(11)          NO                  0                              
+faltante_dinero          decimal(14,2)    NO                  0.00                           
+sobrante_dinero          decimal(14,2)    NO                  0.00                           
+observaciones            text             NO                                                 
+evidencia_url            varchar(255)     YES                                                
+estado                   enum('pendiente','respondido_lider','respondido_admin','vencido') NO       MUL        pendiente                      
+fecha_limite             datetime         NO                                                 
+lider_id                 int(11)          YES      MUL                                       
+supervisor_id            int(11)          YES      MUL                                       
+auxiliar_id              int(11)          YES      MUL                                       
+creado_por               int(11)          NO       MUL                                       
+creado_en                datetime         NO                  current_timestamp()                     
+actualizado_en           datetime         NO                  current_timestamp() on update current_timestamp()
+
+INDICES:
+Key_name             Non_unique Seq        Column     Card       Type      
+PRIMARY              0          1          id         29         BTREE     
+idx_hallazgo_fechas  1          1          fecha      14         BTREE     
+idx_hallazgo_fechas  1          2          fecha_limite 14         BTREE     
+idx_hallazgo_estado  1          1          estado     9          BTREE     
+idx_hallazgo_centro  1          1          centro_id  9          BTREE     
+idx_hallazgo_zona    1          1          zona_id    4          BTREE     
+fk_h_asesor          1          1          asesor_id  14         BTREE     
+fk_h_creado_por      1          1          creado_por 2          BTREE     
+idx_h_lider          1          1          lider_id   4          BTREE     
+idx_h_supervisor     1          1          supervisor_id 4          BTREE     
+idx_h_auxiliar       1          1          auxiliar_id 2          BTREE     
+
+FOREIGN KEYS:
+- fk_h_asesor: (asesor_id) -> asesor.id  [ON UPDATE CASCADE ON DELETE SET NULL]
+- fk_h_centro: (centro_id) -> centro_costo.id  [ON UPDATE CASCADE ON DELETE RESTRICT]
+- fk_h_creado_por: (creado_por) -> usuario.id  [ON UPDATE CASCADE ON DELETE RESTRICT]
+- fk_h_zona: (zona_id) -> zona.id  [ON UPDATE CASCADE ON DELETE RESTRICT]
+
+MUESTRAS (hasta 5 filas):
+Total filas: 29
+ - {"id":1,"fecha":"2025-09-25","zona_id":1,"centro_id":2,"asesor_id":2,"cedula":"123456789","nombre_pdv":"PDV PRUEBA","pdv_codigo":null,"raspas_faltantes":1,"faltante_dinero":"15000.00","sobrante_dinero":"0.00","observaciones":"PRUEBA OBSERVACIÓN","evidencia_url":"\/auditoria_app\/public\/uploads\/hallazgos\/1\/evidencia_1.jpeg","estado":"respondido_admin","fecha_limite":"2025-09-25 04:00:00","lider_id":null,"supervisor_id":null,"auxiliar_id":null,"creado_por":1,"creado_en":"2025-09-25 18:37:38","actualizado_en":"2025-09-25 18:41:07"}
+ - {"id":2,"fecha":"2025-09-25","zona_id":1,"centro_id":1,"asesor_id":3,"cedula":"123456","nombre_pdv":"PDV PRADERA","pdv_codigo":null,"raspas_faltantes":0,"faltante_dinero":"100.00","sobrante_dinero":"0.00","observaciones":"PRUWEBA REPSUESTA LIDER","evidencia_url":"\/auditoria_app\/public\/uploads\/hallazgos\/2\/evidencia_2.jpeg","estado":"vencido","fecha_limite":"2025-09-27 00:00:00","lider_id":null,"supervisor_id":null,"auxiliar_id":null,"creado_por":1,"creado_en":"2025-09-25 21:48:19","actualizado_en":"2025-09-27 01:29:06"}
+ - {"id":3,"fecha":"2025-09-25","zona_id":1,"centro_id":1,"asesor_id":4,"cedula":"987654321","nombre_pdv":"PDV PRUEBA II","pdv_codigo":null,"raspas_faltantes":2,"faltante_dinero":"0.00","sobrante_dinero":"0.00","observaciones":"RESPONDER EL LÍDER","evidencia_url":"\/auditoria_app\/public\/uploads\/hallazgos\/3\/evidencia_3.jpeg","estado":"vencido","fecha_limite":"2025-09-27 00:00:00","lider_id":null,"supervisor_id":null,"auxiliar_id":null,"creado_por":1,"creado_en":"2025-09-25 22:19:32","actualizado_en":"2025-09-27 01:29:06"}
+ - {"id":4,"fecha":"2025-09-25","zona_id":1,"centro_id":1,"asesor_id":5,"cedula":"64920490","nombre_pdv":"PDV PRUEBA III","pdv_codigo":null,"raspas_faltantes":0,"faltante_dinero":"100.00","sobrante_dinero":"0.00","observaciones":"OLGA RESPONDE","evidencia_url":"\/auditoria_app\/public\/uploads\/hallazgos\/4\/evidencia_4.jpeg","estado":"vencido","fecha_limite":"2025-09-27 00:00:00","lider_id":null,"supervisor_id":null,"auxiliar_id":null,"creado_por":1,"creado_en":"2025-09-25 22:37:16","actualizado_en":"2025-09-27 01:29:06"}
+ - {"id":15,"fecha":"2025-09-26","zona_id":3,"centro_id":17,"asesor_id":null,"cedula":"123456789","nombre_pdv":"EL GATO","pdv_codigo":"7890","raspas_faltantes":1,"faltante_dinero":"20000.00","sobrante_dinero":"0.00","observaciones":"SSASASASSAA","evidencia_url":"\/auditoria_app\/public\/uploads\/hallazgos\/15\/evidencia_15.jpeg","estado":"respondido_lider","fecha_limite":"2025-09-28 23:59:59","lider_id":null,"supervisor_id":null,"auxiliar_id":null,"creado_por":1,"creado_en":"2025-09-26 00:21:49","actualizado_en":"2025-09-28 11:15:35"}
+
+CREATE TABLE:
+CREATE TABLE `hallazgo` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `fecha` date NOT NULL,
+  `zona_id` int(11) NOT NULL,
+  `centro_id` int(11) NOT NULL,
+  `asesor_id` int(11) DEFAULT NULL,
+  `cedula` varchar(40) DEFAULT NULL,
+  `nombre_pdv` varchar(200) NOT NULL,
+  `pdv_codigo` varchar(40) DEFAULT NULL,
+  `raspas_faltantes` int(11) NOT NULL DEFAULT 0,
+  `faltante_dinero` decimal(14,2) NOT NULL DEFAULT 0.00,
+  `sobrante_dinero` decimal(14,2) NOT NULL DEFAULT 0.00,
+  `observaciones` text NOT NULL,
+  `evidencia_url` varchar(255) DEFAULT NULL,
+  `estado` enum('pendiente','respondido_lider','respondido_admin','vencido') NOT NULL DEFAULT 'pendiente',
+  `fecha_limite` datetime NOT NULL,
+  `lider_id` int(11) DEFAULT NULL,
+  `supervisor_id` int(11) DEFAULT NULL,
+  `auxiliar_id` int(11) DEFAULT NULL,
+  `creado_por` int(11) NOT NULL,
+  `creado_en` datetime NOT NULL DEFAULT current_timestamp(),
+  `actualizado_en` datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  PRIMARY KEY (`id`),
+  KEY `idx_hallazgo_fechas` (`fecha`,`fecha_limite`),
+  KEY `idx_hallazgo_estado` (`estado`),
+  KEY `idx_hallazgo_centro` (`centro_id`),
+  KEY `idx_hallazgo_zona` (`zona_id`),
+  KEY `fk_h_asesor` (`asesor_id`),
+  KEY `fk_h_creado_por` (`creado_por`),
+  KEY `idx_h_lider` (`lider_id`),
+  KEY `idx_h_supervisor` (`supervisor_id`),
+  KEY `idx_h_auxiliar` (`auxiliar_id`),
+  CONSTRAINT `fk_h_asesor` FOREIGN KEY (`asesor_id`) REFERENCES `asesor` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
+  CONSTRAINT `fk_h_centro` FOREIGN KEY (`centro_id`) REFERENCES `centro_costo` (`id`) ON UPDATE CASCADE,
+  CONSTRAINT `fk_h_creado_por` FOREIGN KEY (`creado_por`) REFERENCES `usuario` (`id`) ON UPDATE CASCADE,
+  CONSTRAINT `fk_h_zona` FOREIGN KEY (`zona_id`) REFERENCES `zona` (`id`) ON UPDATE CASCADE
+) ENGINE=InnoDB AUTO_INCREMENT=40 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+
+--------------------------------------------------------------------------------
+TABLA: hallazgo_respuesta
+--------------------------------------------------------------------------------
+
+COLUMNAS:
+Field                    Type             Null     Key        Default    Extra               
+id                       int(11)          NO       PRI                   auto_increment      
+hallazgo_id              int(11)          NO       MUL                                       
+usuario_id               int(11)          NO       MUL                                       
+rol_al_responder         enum('lider','admin') NO                                                 
+respuesta                text             NO                                                 
+adjunto_url              varchar(255)     YES                                                
+respondido_en            datetime         NO                  current_timestamp()                     
+
+INDICES:
+Key_name             Non_unique Seq        Column     Card       Type      
+PRIMARY              0          1          id         19         BTREE     
+idx_hr_hallazgo      1          1          hallazgo_id 19         BTREE     
+idx_hr_usuario       1          1          usuario_id 4          BTREE     
+
+FOREIGN KEYS:
+- fk_hr_h: (hallazgo_id) -> hallazgo.id  [ON UPDATE CASCADE ON DELETE CASCADE]
+- fk_hr_u: (usuario_id) -> usuario.id  [ON UPDATE CASCADE ON DELETE RESTRICT]
+
+MUESTRAS (hasta 5 filas):
+Total filas: 20
+ - {"id":1,"hallazgo_id":1,"usuario_id":1,"rol_al_responder":"admin","respuesta":"es una prueba","adjunto_url":null,"respondido_en":"2025-09-25 18:40:17"}
+ - {"id":2,"hallazgo_id":1,"usuario_id":1,"rol_al_responder":"admin","respuesta":"me parece bien","adjunto_url":null,"respondido_en":"2025-09-25 18:41:07"}
+ - {"id":3,"hallazgo_id":22,"usuario_id":1,"rol_al_responder":"admin","respuesta":"Estado actual: pendiente | F. límite: 2025-09-29 23:59:59","adjunto_url":"\/auditoria_app\/public\/uploads\/hallazgos\/22\/respuesta_3.jpeg","respondido_en":"2025-09-27 06:58:21"}
+ - {"id":4,"hallazgo_id":21,"usuario_id":2,"rol_al_responder":"lider","respuesta":"es una respuesta que debo entregar a todos","adjunto_url":"\/auditoria_app\/public\/uploads\/hallazgos\/21\/respuesta_4.jpeg","respondido_en":"2025-09-27 07:05:21"}
+ - {"id":5,"hallazgo_id":22,"usuario_id":2,"rol_al_responder":"lider","respuesta":"SI FUE RESPONDIDO EN ESTE CASO, FAVOR CERRAR","adjunto_url":"\/auditoria_app\/public\/uploads\/hallazgos\/22\/respuesta_5.jpeg","respondido_en":"2025-09-27 07:09:49"}
+
+CREATE TABLE:
+CREATE TABLE `hallazgo_respuesta` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `hallazgo_id` int(11) NOT NULL,
+  `usuario_id` int(11) NOT NULL,
+  `rol_al_responder` enum('lider','admin') NOT NULL,
+  `respuesta` text NOT NULL,
+  `adjunto_url` varchar(255) DEFAULT NULL,
+  `respondido_en` datetime NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  KEY `idx_hr_hallazgo` (`hallazgo_id`),
+  KEY `idx_hr_usuario` (`usuario_id`),
+  CONSTRAINT `fk_hr_h` FOREIGN KEY (`hallazgo_id`) REFERENCES `hallazgo` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `fk_hr_u` FOREIGN KEY (`usuario_id`) REFERENCES `usuario` (`id`) ON UPDATE CASCADE
+) ENGINE=InnoDB AUTO_INCREMENT=21 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+
+--------------------------------------------------------------------------------
+TABLA: hallazgo_respuesta_adjunto
+--------------------------------------------------------------------------------
+
+COLUMNAS:
+Field                    Type             Null     Key        Default    Extra               
+id                       int(11)          NO       PRI                   auto_increment      
+respuesta_id             int(11)          NO       MUL                                       
+url                      varchar(255)     NO                                                 
+nombre                   varchar(160)     YES                                                
+mime                     varchar(80)      YES                                                
+size                     int(11)          YES                                                
+creado_en                datetime         NO                  current_timestamp()                     
+
+INDICES:
+Key_name             Non_unique Seq        Column     Card       Type      
+PRIMARY              0          1          id         0          BTREE     
+idx_respadj_respuesta 1          1          respuesta_id 0          BTREE     
+
+FOREIGN KEYS:
+- fk_respadj_respuesta: (respuesta_id) -> hallazgo_respuesta.id  [ON UPDATE RESTRICT ON DELETE CASCADE]
+
+MUESTRAS (hasta 5 filas):
+Total filas: 0
+
+CREATE TABLE:
+CREATE TABLE `hallazgo_respuesta_adjunto` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `respuesta_id` int(11) NOT NULL,
+  `url` varchar(255) NOT NULL,
+  `nombre` varchar(160) DEFAULT NULL,
+  `mime` varchar(80) DEFAULT NULL,
+  `size` int(11) DEFAULT NULL,
+  `creado_en` datetime NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  KEY `idx_respadj_respuesta` (`respuesta_id`),
+  CONSTRAINT `fk_respadj_respuesta` FOREIGN KEY (`respuesta_id`) REFERENCES `hallazgo_respuesta` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+
+--------------------------------------------------------------------------------
+TABLA: hallazgo_respuesta_archivo
+--------------------------------------------------------------------------------
+
+COLUMNAS:
+Field                    Type             Null     Key        Default    Extra               
+id                       int(11)          NO       PRI                   auto_increment      
+respuesta_id             int(11)          NO       MUL                                       
+url                      varchar(255)     NO                                                 
+creado_en                datetime         NO                  current_timestamp()                     
+
+INDICES:
+Key_name             Non_unique Seq        Column     Card       Type      
+PRIMARY              0          1          id         0          BTREE     
+respuesta_id         1          1          respuesta_id 0          BTREE     
+
+FOREIGN KEYS:
+- hallazgo_respuesta_archivo_ibfk_1: (respuesta_id) -> hallazgo_respuesta.id  [ON UPDATE RESTRICT ON DELETE RESTRICT]
+
+MUESTRAS (hasta 5 filas):
+Total filas: 0
+
+CREATE TABLE:
+CREATE TABLE `hallazgo_respuesta_archivo` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `respuesta_id` int(11) NOT NULL,
+  `url` varchar(255) NOT NULL,
+  `creado_en` datetime NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  KEY `respuesta_id` (`respuesta_id`),
+  CONSTRAINT `hallazgo_respuesta_archivo_ibfk_1` FOREIGN KEY (`respuesta_id`) REFERENCES `hallazgo_respuesta` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+
+--------------------------------------------------------------------------------
+TABLA: lider_centro
+--------------------------------------------------------------------------------
+
+COLUMNAS:
+Field                    Type             Null     Key        Default    Extra               
+id                       int(11)          NO       PRI                   auto_increment      
+usuario_id               int(11)          NO       MUL                                       
+centro_id                int(11)          NO       MUL                                       
+desde                    date             NO       MUL                                       
+hasta                    date             YES                                                
+
+INDICES:
+Key_name             Non_unique Seq        Column     Card       Type      
+PRIMARY              0          1          id         5          BTREE     
+idx_lc_centro        1          1          centro_id  5          BTREE     
+idx_lc_usuario       1          1          usuario_id 5          BTREE     
+idx_lc_vigencia      1          1          desde      5          BTREE     
+idx_lc_vigencia      1          2          hasta      5          BTREE     
+
+FOREIGN KEYS:
+- fk_lc_centro: (centro_id) -> centro_costo.id  [ON UPDATE CASCADE ON DELETE CASCADE]
+- fk_lc_usuario: (usuario_id) -> usuario.id  [ON UPDATE CASCADE ON DELETE RESTRICT]
+
+MUESTRAS (hasta 5 filas):
+Total filas: 5
+ - {"id":1,"usuario_id":4,"centro_id":1,"desde":"2025-09-26","hasta":"2025-09-25"}
+ - {"id":2,"usuario_id":4,"centro_id":1,"desde":"2025-09-25","hasta":null}
+ - {"id":3,"usuario_id":2,"centro_id":10,"desde":"2025-09-25","hasta":"2025-09-26"}
+ - {"id":4,"usuario_id":2,"centro_id":16,"desde":"2025-09-26","hasta":"2025-09-26"}
+ - {"id":5,"usuario_id":2,"centro_id":17,"desde":"2025-09-26","hasta":null}
+
+CREATE TABLE:
+CREATE TABLE `lider_centro` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `usuario_id` int(11) NOT NULL,
+  `centro_id` int(11) NOT NULL,
+  `desde` date NOT NULL,
+  `hasta` date DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_lc_centro` (`centro_id`),
+  KEY `idx_lc_usuario` (`usuario_id`),
+  KEY `idx_lc_vigencia` (`desde`,`hasta`),
+  CONSTRAINT `fk_lc_centro` FOREIGN KEY (`centro_id`) REFERENCES `centro_costo` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `fk_lc_usuario` FOREIGN KEY (`usuario_id`) REFERENCES `usuario` (`id`) ON UPDATE CASCADE
+) ENGINE=InnoDB AUTO_INCREMENT=6 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+
+--------------------------------------------------------------------------------
+TABLA: modulo
+--------------------------------------------------------------------------------
+
+COLUMNAS:
+Field                    Type             Null     Key        Default    Extra               
+id                       int(11)          NO       PRI                   auto_increment      
+slug                     varchar(50)      NO       UNI                                       
+clave                    varchar(50)      NO       UNI                                       
+nombre                   varchar(100)     NO                                                 
+icono                    varchar(60)      YES                 bi-grid                        
+ruta_base                varchar(120)     NO                                                 
+orden                    int(11)          YES                 100                            
+activo                   tinyint(1)       NO                  1                              
+
+INDICES:
+Key_name             Non_unique Seq        Column     Card       Type      
+PRIMARY              0          1          id         4          BTREE     
+clave                0          1          clave      4          BTREE     
+uq_modulo_slug       0          1          slug       4          BTREE     
+
+FOREIGN KEYS:
+(sin claves foráneas)
+
+MUESTRAS (hasta 5 filas):
+Total filas: 5
+ - {"id":1,"slug":"auditoria","clave":"auditoria","nombre":"Auditoría","icono":"bi-clipboard-check","ruta_base":"\/modulos\/auditoria","orden":10,"activo":1}
+ - {"id":2,"slug":"tt","clave":"tt","nombre":"T&T","icono":"bi-people","ruta_base":"\/modulos\/tt","orden":20,"activo":1}
+ - {"id":3,"slug":"inventario","clave":"inventario","nombre":"Operaciones Inventario","icono":"bi-boxes","ruta_base":"\/inventario\/","orden":30,"activo":0}
+ - {"id":8,"slug":"inventarios","clave":"inventarios","nombre":"Inventarios","icono":"bi-box-seam","ruta_base":"\/modulos\/inventarios","orden":30,"activo":1}
+ - {"id":9,"slug":"pdv","clave":"pdv","nombre":"PDV","icono":"bi-shop","ruta_base":"\/modulos\/pdv","orden":40,"activo":1}
+
+CREATE TABLE:
+CREATE TABLE `modulo` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `slug` varchar(50) NOT NULL,
+  `clave` varchar(50) NOT NULL,
+  `nombre` varchar(100) NOT NULL,
+  `icono` varchar(60) DEFAULT 'bi-grid',
+  `ruta_base` varchar(120) NOT NULL,
+  `orden` int(11) DEFAULT 100,
+  `activo` tinyint(1) NOT NULL DEFAULT 1,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `clave` (`clave`),
+  UNIQUE KEY `uq_modulo_slug` (`slug`)
+) ENGINE=InnoDB AUTO_INCREMENT=15 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+
+--------------------------------------------------------------------------------
+TABLA: notificacion
+--------------------------------------------------------------------------------
+
+COLUMNAS:
+Field                    Type             Null     Key        Default    Extra               
+id                       int(11)          NO       PRI                   auto_increment      
+usuario_id               int(11)          NO       MUL                                       
+titulo                   varchar(160)     NO                                                 
+cuerpo                   varchar(500)     YES                                                
+url                      varchar(255)     YES                                                
+ref_type                 varchar(50)      YES                                                
+ref_id                   int(11)          YES                                                
+codigo                   varchar(50)      YES                                                
+creado_en                datetime         NO                  current_timestamp()                     
+leido_en                 datetime         YES                                                
+
+INDICES:
+Key_name             Non_unique Seq        Column     Card       Type      
+PRIMARY              0          1          id         30         BTREE     
+uniq_dedupe          0          1          usuario_id 4          BTREE     
+uniq_dedupe          0          2          ref_type   4          BTREE     
+uniq_dedupe          0          3          ref_id     30         BTREE     
+uniq_dedupe          0          4          codigo     30         BTREE     
+idx_notif_user_unread 1          1          usuario_id 4          BTREE     
+idx_notif_user_unread 1          2          leido_en   30         BTREE     
+idx_notif_user_fecha 1          1          usuario_id 4          BTREE     
+idx_notif_user_fecha 1          2          creado_en  30         BTREE     
+
+FOREIGN KEYS:
+- fk_notif_usuario: (usuario_id) -> usuario.id  [ON UPDATE CASCADE ON DELETE CASCADE]
+
+MUESTRAS (hasta 5 filas):
+Total filas: 30
+ - {"id":1,"usuario_id":1,"titulo":"Demo","cuerpo":"Notificación de prueba","url":"\/auditoria_app\/public\/dashboard.php","ref_type":"hallazgo","ref_id":123,"codigo":"H_NUEVO","creado_en":"2025-09-26 23:22:13","leido_en":"2025-09-26 23:43:47"}
+ - {"id":2,"usuario_id":2,"titulo":"Respuesta en hallazgo #22","cuerpo":"Estado: respondido_admin — Zona: CERETÉ — CC: Ciénaga de Oro","url":"\/auditoria_app\/public\/hallazgos\/detalle.php?id=22","ref_type":"hallazgo","ref_id":22,"codigo":"H_RESPUESTA","creado_en":"2025-09-27 06:58:21","leido_en":"2025-09-27 07:14:35"}
+ - {"id":3,"usuario_id":2,"titulo":"Respuesta en hallazgo #21","cuerpo":"Estado: respondido_lider — Zona: CERETÉ — CC: Ciénaga de Oro","url":"\/auditoria_app\/public\/hallazgos\/detalle.php?id=21","ref_type":"hallazgo","ref_id":21,"codigo":"H_RESPUESTA","creado_en":"2025-09-27 07:05:21","leido_en":"2025-09-27 07:14:34"}
+ - {"id":5,"usuario_id":2,"titulo":"Nuevo hallazgo #24","cuerpo":"Tienes un nuevo hallazgo asignado. Fecha: 2025-09-27","url":"\/auditoria_app\/public\/hallazgos\/detalle.php?id=24","ref_type":"hallazgo","ref_id":24,"codigo":"H_NUEVO","creado_en":"2025-09-27 09:28:12","leido_en":"2025-09-27 17:43:24"}
+ - {"id":6,"usuario_id":2,"titulo":"Nuevo hallazgo #25","cuerpo":"Tienes un nuevo hallazgo asignado. Fecha: 2025-09-27","url":"\/auditoria_app\/public\/hallazgos\/detalle.php?id=25","ref_type":"hallazgo","ref_id":25,"codigo":"H_NUEVO","creado_en":"2025-09-27 10:14:31","leido_en":"2025-09-27 17:43:30"}
+
+CREATE TABLE:
+CREATE TABLE `notificacion` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `usuario_id` int(11) NOT NULL,
+  `titulo` varchar(160) NOT NULL,
+  `cuerpo` varchar(500) DEFAULT NULL,
+  `url` varchar(255) DEFAULT NULL,
+  `ref_type` varchar(50) DEFAULT NULL,
+  `ref_id` int(11) DEFAULT NULL,
+  `codigo` varchar(50) DEFAULT NULL,
+  `creado_en` datetime NOT NULL DEFAULT current_timestamp(),
+  `leido_en` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uniq_dedupe` (`usuario_id`,`ref_type`,`ref_id`,`codigo`),
+  KEY `idx_notif_user_unread` (`usuario_id`,`leido_en`),
+  KEY `idx_notif_user_fecha` (`usuario_id`,`creado_en`),
+  CONSTRAINT `fk_notif_usuario` FOREIGN KEY (`usuario_id`) REFERENCES `usuario` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB AUTO_INCREMENT=34 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+
+--------------------------------------------------------------------------------
+TABLA: notificacion_backup_20250926_232200
+--------------------------------------------------------------------------------
+
+COLUMNAS:
+Field                    Type             Null     Key        Default    Extra               
+id                       int(11)          NO       PRI                   auto_increment      
+usuario_id               int(11)          NO       MUL                                       
+hallazgo_id              int(11)          NO       MUL                                       
+tipo                     enum('nuevo','recordatorio','vencido','resuelto') NO                                                 
+canal                    enum('app','email','whatsapp') NO                  app                            
+enviado_en               datetime         NO                  current_timestamp()                     
+
+INDICES:
+Key_name             Non_unique Seq        Column     Card       Type      
+PRIMARY              0          1          id         0          BTREE     
+idx_notif_usuario    1          1          usuario_id 0          BTREE     
+idx_notif_hallazgo   1          1          hallazgo_id 0          BTREE     
+
+FOREIGN KEYS:
+- fk_n_h: (hallazgo_id) -> hallazgo.id  [ON UPDATE CASCADE ON DELETE CASCADE]
+- fk_n_u: (usuario_id) -> usuario.id  [ON UPDATE CASCADE ON DELETE CASCADE]
+
+MUESTRAS (hasta 5 filas):
+Total filas: 0
+
+CREATE TABLE:
+CREATE TABLE `notificacion_backup_20250926_232200` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `usuario_id` int(11) NOT NULL,
+  `hallazgo_id` int(11) NOT NULL,
+  `tipo` enum('nuevo','recordatorio','vencido','resuelto') NOT NULL,
+  `canal` enum('app','email','whatsapp') NOT NULL DEFAULT 'app',
+  `enviado_en` datetime NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  KEY `idx_notif_usuario` (`usuario_id`),
+  KEY `idx_notif_hallazgo` (`hallazgo_id`),
+  CONSTRAINT `fk_n_h` FOREIGN KEY (`hallazgo_id`) REFERENCES `hallazgo` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `fk_n_u` FOREIGN KEY (`usuario_id`) REFERENCES `usuario` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+
+--------------------------------------------------------------------------------
+TABLA: pdv
+--------------------------------------------------------------------------------
+
+COLUMNAS:
+Field                    Type             Null     Key        Default    Extra               
+id                       int(11)          NO       PRI                   auto_increment      
+codigo                   varchar(40)      NO                                                 
+nombre                   varchar(160)     NO                                                 
+centro_id                int(11)          YES      MUL                                       
+zona_id                  int(11)          YES      MUL                                       
+direccion                varchar(220)     YES                                                
+activo                   tinyint(1)       NO       MUL        1                              
+creado_en                timestamp        YES                 current_timestamp()                     
+actualizado_en           timestamp        YES                            on update current_timestamp()
+
+INDICES:
+Key_name             Non_unique Seq        Column     Card       Type      
+PRIMARY              0          1          id         6          BTREE     
+uk_pdv_centro_codigo 0          1          centro_id  6          BTREE     
+uk_pdv_centro_codigo 0          2          codigo     6          BTREE     
+idx_pdv_centro       1          1          centro_id  6          BTREE     
+idx_pdv_zona         1          1          zona_id    2          BTREE     
+idx_pdv_activo       1          1          activo     2          BTREE     
+
+FOREIGN KEYS:
+- fk_pdv_cc: (centro_id) -> centro_costo.id  [ON UPDATE RESTRICT ON DELETE SET NULL]
+- fk_pdv_centro: (centro_id) -> centro_costo.id  [ON UPDATE CASCADE ON DELETE RESTRICT]
+- fk_pdv_zona: (zona_id) -> zona.id  [ON UPDATE RESTRICT ON DELETE SET NULL]
+
+MUESTRAS (hasta 5 filas):
+Total filas: 7
+ - {"id":5,"codigo":"5555","nombre":"PATURRO","centro_id":10,"zona_id":null,"direccion":null,"activo":1,"creado_en":"2025-09-26 21:44:31","actualizado_en":null}
+ - {"id":6,"codigo":"7890","nombre":"EL GATO","centro_id":17,"zona_id":null,"direccion":null,"activo":1,"creado_en":"2025-09-26 22:48:25","actualizado_en":null}
+ - {"id":8,"codigo":"8888","nombre":"LA TIENDA","centro_id":17,"zona_id":null,"direccion":null,"activo":1,"creado_en":"2025-09-26 23:45:25","actualizado_en":null}
+ - {"id":9,"codigo":"8545","nombre":"EL SUPERMERCADO","centro_id":16,"zona_id":null,"direccion":null,"activo":1,"creado_en":"2025-09-27 00:25:29","actualizado_en":null}
+ - {"id":10,"codigo":"8545","nombre":"EL SUPERMERCADO","centro_id":17,"zona_id":null,"direccion":null,"activo":1,"creado_en":"2025-09-27 00:26:56","actualizado_en":null}
+
+CREATE TABLE:
+CREATE TABLE `pdv` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `codigo` varchar(40) NOT NULL,
+  `nombre` varchar(160) NOT NULL,
+  `centro_id` int(11) DEFAULT NULL,
+  `zona_id` int(11) DEFAULT NULL,
+  `direccion` varchar(220) DEFAULT NULL,
+  `activo` tinyint(1) NOT NULL DEFAULT 1,
+  `creado_en` timestamp NULL DEFAULT current_timestamp(),
+  `actualizado_en` timestamp NULL DEFAULT NULL ON UPDATE current_timestamp(),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_pdv_centro_codigo` (`centro_id`,`codigo`),
+  KEY `idx_pdv_centro` (`centro_id`),
+  KEY `idx_pdv_zona` (`zona_id`),
+  KEY `idx_pdv_activo` (`activo`),
+  CONSTRAINT `fk_pdv_cc` FOREIGN KEY (`centro_id`) REFERENCES `centro_costo` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `fk_pdv_centro` FOREIGN KEY (`centro_id`) REFERENCES `centro_costo` (`id`) ON UPDATE CASCADE,
+  CONSTRAINT `fk_pdv_zona` FOREIGN KEY (`zona_id`) REFERENCES `zona` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB AUTO_INCREMENT=13 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+
+--------------------------------------------------------------------------------
+TABLA: permiso
+--------------------------------------------------------------------------------
+
+COLUMNAS:
+Field                    Type             Null     Key        Default    Extra               
+id                       int(11)          NO       PRI                   auto_increment      
+modulo_id                int(11)          NO       MUL                                       
+clave                    varchar(60)      NO                                                 
+nombre                   varchar(120)     NO                                                 
+
+INDICES:
+Key_name             Non_unique Seq        Column     Card       Type      
+PRIMARY              0          1          id         21         BTREE     
+modulo_id            0          1          modulo_id  7          BTREE     
+modulo_id            0          2          clave      21         BTREE     
+
+FOREIGN KEYS:
+- fk_perm_mod: (modulo_id) -> modulo.id  [ON UPDATE RESTRICT ON DELETE CASCADE]
+
+MUESTRAS (hasta 5 filas):
+Total filas: 21
+ - {"id":1,"modulo_id":1,"clave":"access","nombre":"Acceder al módulo"}
+ - {"id":2,"modulo_id":3,"clave":"access","nombre":"Acceder al módulo"}
+ - {"id":3,"modulo_id":2,"clave":"access","nombre":"Acceder al módulo"}
+ - {"id":4,"modulo_id":1,"clave":"view","nombre":"Ver\/Listar"}
+ - {"id":5,"modulo_id":3,"clave":"view","nombre":"Ver\/Listar"}
+
+CREATE TABLE:
+CREATE TABLE `permiso` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `modulo_id` int(11) NOT NULL,
+  `clave` varchar(60) NOT NULL,
+  `nombre` varchar(120) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `modulo_id` (`modulo_id`,`clave`),
+  CONSTRAINT `fk_perm_mod` FOREIGN KEY (`modulo_id`) REFERENCES `modulo` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB AUTO_INCREMENT=34 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+
+--------------------------------------------------------------------------------
+TABLA: rol
+--------------------------------------------------------------------------------
+
+COLUMNAS:
+Field                    Type             Null     Key        Default    Extra               
+id                       int(11)          NO       PRI                   auto_increment      
+clave                    varchar(50)      NO       UNI                                       
+nombre                   varchar(100)     NO                                                 
+
+INDICES:
+Key_name             Non_unique Seq        Column     Card       Type      
+PRIMARY              0          1          id         5          BTREE     
+clave                0          1          clave      5          BTREE     
+
+FOREIGN KEYS:
+(sin claves foráneas)
+
+MUESTRAS (hasta 5 filas):
+Total filas: 5
+ - {"id":1,"clave":"admin","nombre":"Administrador"}
+ - {"id":2,"clave":"auditor","nombre":"Auditor"}
+ - {"id":3,"clave":"supervisor","nombre":"Supervisor"}
+ - {"id":4,"clave":"lider","nombre":"Líder"}
+ - {"id":5,"clave":"auxiliar","nombre":"Auxiliar"}
+
+CREATE TABLE:
+CREATE TABLE `rol` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `clave` varchar(50) NOT NULL,
+  `nombre` varchar(100) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `clave` (`clave`)
+) ENGINE=InnoDB AUTO_INCREMENT=12 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+
+--------------------------------------------------------------------------------
+TABLA: rol_permiso
+--------------------------------------------------------------------------------
+
+COLUMNAS:
+Field                    Type             Null     Key        Default    Extra               
+rol_id                   int(11)          NO       PRI                                       
+permiso_id               int(11)          NO       PRI                                       
+
+INDICES:
+Key_name             Non_unique Seq        Column     Card       Type      
+PRIMARY              0          1          rol_id     6          BTREE     
+PRIMARY              0          2          permiso_id 33         BTREE     
+permiso_id           1          1          permiso_id 33         BTREE     
+
+FOREIGN KEYS:
+- rol_permiso_ibfk_1: (rol_id) -> rol.id  [ON UPDATE RESTRICT ON DELETE CASCADE]
+- rol_permiso_ibfk_2: (permiso_id) -> permiso.id  [ON UPDATE RESTRICT ON DELETE CASCADE]
+
+MUESTRAS (hasta 5 filas):
+Total filas: 33
+ - {"rol_id":1,"permiso_id":1}
+ - {"rol_id":1,"permiso_id":2}
+ - {"rol_id":1,"permiso_id":3}
+ - {"rol_id":1,"permiso_id":4}
+ - {"rol_id":1,"permiso_id":5}
+
+CREATE TABLE:
+CREATE TABLE `rol_permiso` (
+  `rol_id` int(11) NOT NULL,
+  `permiso_id` int(11) NOT NULL,
+  PRIMARY KEY (`rol_id`,`permiso_id`),
+  KEY `permiso_id` (`permiso_id`),
+  CONSTRAINT `rol_permiso_ibfk_1` FOREIGN KEY (`rol_id`) REFERENCES `rol` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `rol_permiso_ibfk_2` FOREIGN KEY (`permiso_id`) REFERENCES `permiso` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+
+--------------------------------------------------------------------------------
+TABLA: supervisor_zona
+--------------------------------------------------------------------------------
+
+COLUMNAS:
+Field                    Type             Null     Key        Default    Extra               
+id                       int(11)          NO       PRI                   auto_increment      
+usuario_id               int(11)          NO       MUL                                       
+zona_id                  int(11)          NO       MUL                                       
+desde                    date             NO       MUL                                       
+hasta                    date             YES                                                
+
+INDICES:
+Key_name             Non_unique Seq        Column     Card       Type      
+PRIMARY              0          1          id         1          BTREE     
+idx_sz_zona          1          1          zona_id    1          BTREE     
+idx_sz_usuario       1          1          usuario_id 1          BTREE     
+idx_sz_vigencia      1          1          desde      1          BTREE     
+idx_sz_vigencia      1          2          hasta      1          BTREE     
+
+FOREIGN KEYS:
+- fk_sz_usuario: (usuario_id) -> usuario.id  [ON UPDATE CASCADE ON DELETE RESTRICT]
+- fk_sz_zona: (zona_id) -> zona.id  [ON UPDATE CASCADE ON DELETE CASCADE]
+
+MUESTRAS (hasta 5 filas):
+Total filas: 2
+ - {"id":1,"usuario_id":3,"zona_id":1,"desde":"2025-09-26","hasta":"2025-09-25"}
+ - {"id":2,"usuario_id":3,"zona_id":1,"desde":"2025-09-25","hasta":null}
+
+CREATE TABLE:
+CREATE TABLE `supervisor_zona` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `usuario_id` int(11) NOT NULL,
+  `zona_id` int(11) NOT NULL,
+  `desde` date NOT NULL,
+  `hasta` date DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_sz_zona` (`zona_id`),
+  KEY `idx_sz_usuario` (`usuario_id`),
+  KEY `idx_sz_vigencia` (`desde`,`hasta`),
+  CONSTRAINT `fk_sz_usuario` FOREIGN KEY (`usuario_id`) REFERENCES `usuario` (`id`) ON UPDATE CASCADE,
+  CONSTRAINT `fk_sz_zona` FOREIGN KEY (`zona_id`) REFERENCES `zona` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+
+--------------------------------------------------------------------------------
+TABLA: usuario
+--------------------------------------------------------------------------------
+
+COLUMNAS:
+Field                    Type             Null     Key        Default    Extra               
+id                       int(11)          NO       PRI                   auto_increment      
+core_user_id             bigint(20)       YES      MUL                                       
+nombre                   varchar(160)     NO                                                 
+email                    varchar(160)     NO       UNI                                       
+telefono                 varchar(40)      YES                                                
+rol                      enum('admin','auditor','supervisor','lider','auxiliar','lectura') NO                  lectura                        
+clave_hash               varchar(255)     NO                                                 
+must_change_password     tinyint(1)       NO                  0                              
+activo                   tinyint(1)       NO                  1                              
+
+INDICES:
+Key_name             Non_unique Seq        Column     Card       Type      
+PRIMARY              0          1          id         5          BTREE     
+uk_usuario_email     0          1          email      5          BTREE     
+idx_core_user_id     1          1          core_user_id 2          BTREE     
+
+FOREIGN KEYS:
+(sin claves foráneas)
+
+MUESTRAS (hasta 5 filas):
+Total filas: 6
+ - {"id":1,"core_user_id":null,"nombre":"Admin Demo","email":"admin@demo.local","telefono":"","rol":"admin","clave_hash":"*01A6717B58FF5C7EAFFF6CB7C96F7428EA65FE4C","must_change_password":0,"activo":1}
+ - {"id":2,"core_user_id":null,"nombre":"Daivis Peralta","email":"lider@record.com.co","telefono":"3125888558","rol":"lider","clave_hash":"$2y$10$FeKIsL8XIz3nfBcFtfxYxuzGz1GZ\/mbLoZS8ae2yTn.NHk.92xqB2","must_change_password":0,"activo":1}
+ - {"id":3,"core_user_id":null,"nombre":"HUGO","email":"hugo@record.com.co","telefono":"3126548564","rol":"supervisor","clave_hash":"$2y$10$ZxQtWS3l.fMgwDVkRf\/lG.RVkLxSwzd9PzmQThaDkUznvqG\/Uu85a","must_change_password":0,"activo":1}
+ - {"id":4,"core_user_id":null,"nombre":"Lina","email":"lina@record.com.co","telefono":"3156459569","rol":"lider","clave_hash":"$2y$10$lYpnpLGcqM5vDIJut6UBluCCSSOofKMAIoAk70xBWDgiWC5erTAxa","must_change_password":0,"activo":1}
+ - {"id":5,"core_user_id":null,"nombre":"Unay","email":"unay@record.com.co","telefono":"3146589545","rol":"auxiliar","clave_hash":"$2y$10$639zb1LUTCKfRj\/uRQrRlu336HJI8JQSR2uaiUo74Qbr3HcOEsv.y","must_change_password":0,"activo":1}
+
+CREATE TABLE:
+CREATE TABLE `usuario` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `core_user_id` bigint(20) DEFAULT NULL,
+  `nombre` varchar(160) NOT NULL,
+  `email` varchar(160) NOT NULL,
+  `telefono` varchar(40) DEFAULT NULL,
+  `rol` enum('admin','auditor','supervisor','lider','auxiliar','lectura') NOT NULL DEFAULT 'lectura',
+  `clave_hash` varchar(255) NOT NULL,
+  `must_change_password` tinyint(1) NOT NULL DEFAULT 0,
+  `activo` tinyint(1) NOT NULL DEFAULT 1,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_usuario_email` (`email`),
+  KEY `idx_core_user_id` (`core_user_id`)
+) ENGINE=InnoDB AUTO_INCREMENT=7 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+
+--------------------------------------------------------------------------------
+TABLA: usuario_modulo
+--------------------------------------------------------------------------------
+
+COLUMNAS:
+Field                    Type             Null     Key        Default    Extra               
+usuario_id               int(11)          NO       PRI                                       
+modulo_id                int(11)          NO       PRI                                       
+activo                   tinyint(1)       NO                  1                              
+
+INDICES:
+Key_name             Non_unique Seq        Column     Card       Type      
+PRIMARY              0          1          usuario_id 2          BTREE     
+PRIMARY              0          2          modulo_id  4          BTREE     
+modulo_id            1          1          modulo_id  4          BTREE     
+
+FOREIGN KEYS:
+- usuario_modulo_ibfk_1: (usuario_id) -> usuario.id  [ON UPDATE RESTRICT ON DELETE CASCADE]
+- usuario_modulo_ibfk_2: (modulo_id) -> modulo.id  [ON UPDATE RESTRICT ON DELETE CASCADE]
+
+MUESTRAS (hasta 5 filas):
+Total filas: 4
+ - {"usuario_id":1,"modulo_id":1,"activo":1}
+ - {"usuario_id":1,"modulo_id":2,"activo":1}
+ - {"usuario_id":1,"modulo_id":8,"activo":1}
+ - {"usuario_id":1,"modulo_id":9,"activo":1}
+
+CREATE TABLE:
+CREATE TABLE `usuario_modulo` (
+  `usuario_id` int(11) NOT NULL,
+  `modulo_id` int(11) NOT NULL,
+  `activo` tinyint(1) NOT NULL DEFAULT 1,
+  PRIMARY KEY (`usuario_id`,`modulo_id`),
+  KEY `modulo_id` (`modulo_id`),
+  CONSTRAINT `usuario_modulo_ibfk_1` FOREIGN KEY (`usuario_id`) REFERENCES `usuario` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `usuario_modulo_ibfk_2` FOREIGN KEY (`modulo_id`) REFERENCES `modulo` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+
+--------------------------------------------------------------------------------
+TABLA: usuario_permiso
+--------------------------------------------------------------------------------
+
+COLUMNAS:
+Field                    Type             Null     Key        Default    Extra               
+usuario_id               int(11)          NO       PRI                                       
+permiso_id               int(11)          NO       PRI                                       
+concedido                tinyint(1)       NO                  1                              
+
+INDICES:
+Key_name             Non_unique Seq        Column     Card       Type      
+PRIMARY              0          1          usuario_id 0          BTREE     
+PRIMARY              0          2          permiso_id 0          BTREE     
+permiso_id           1          1          permiso_id 0          BTREE     
+
+FOREIGN KEYS:
+- usuario_permiso_ibfk_1: (usuario_id) -> usuario.id  [ON UPDATE RESTRICT ON DELETE CASCADE]
+- usuario_permiso_ibfk_2: (permiso_id) -> permiso.id  [ON UPDATE RESTRICT ON DELETE CASCADE]
+
+MUESTRAS (hasta 5 filas):
+Total filas: 0
+
+CREATE TABLE:
+CREATE TABLE `usuario_permiso` (
+  `usuario_id` int(11) NOT NULL,
+  `permiso_id` int(11) NOT NULL,
+  `concedido` tinyint(1) NOT NULL DEFAULT 1,
+  PRIMARY KEY (`usuario_id`,`permiso_id`),
+  KEY `permiso_id` (`permiso_id`),
+  CONSTRAINT `usuario_permiso_ibfk_1` FOREIGN KEY (`usuario_id`) REFERENCES `usuario` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `usuario_permiso_ibfk_2` FOREIGN KEY (`permiso_id`) REFERENCES `permiso` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+
+--------------------------------------------------------------------------------
+TABLA: usuario_rol
+--------------------------------------------------------------------------------
+
+COLUMNAS:
+Field                    Type             Null     Key        Default    Extra               
+usuario_id               int(11)          NO       PRI                                       
+rol_id                   int(11)          NO       PRI                                       
+
+INDICES:
+Key_name             Non_unique Seq        Column     Card       Type      
+PRIMARY              0          1          usuario_id 0          BTREE     
+PRIMARY              0          2          rol_id     0          BTREE     
+rol_id               1          1          rol_id     0          BTREE     
+
+FOREIGN KEYS:
+- usuario_rol_ibfk_1: (usuario_id) -> usuario.id  [ON UPDATE RESTRICT ON DELETE CASCADE]
+- usuario_rol_ibfk_2: (rol_id) -> rol.id  [ON UPDATE RESTRICT ON DELETE CASCADE]
+
+MUESTRAS (hasta 5 filas):
+Total filas: 1
+ - {"usuario_id":1,"rol_id":1}
+
+CREATE TABLE:
+CREATE TABLE `usuario_rol` (
+  `usuario_id` int(11) NOT NULL,
+  `rol_id` int(11) NOT NULL,
+  PRIMARY KEY (`usuario_id`,`rol_id`),
+  KEY `rol_id` (`rol_id`),
+  CONSTRAINT `usuario_rol_ibfk_1` FOREIGN KEY (`usuario_id`) REFERENCES `usuario` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `usuario_rol_ibfk_2` FOREIGN KEY (`rol_id`) REFERENCES `rol` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+
+--------------------------------------------------------------------------------
+TABLA: zona
+--------------------------------------------------------------------------------
+
+COLUMNAS:
+Field                    Type             Null     Key        Default    Extra               
+id                       int(11)          NO       PRI                   auto_increment      
+nombre                   varchar(120)     NO       UNI                                       
+activo                   tinyint(1)       NO                  1                              
+
+INDICES:
+Key_name             Non_unique Seq        Column     Card       Type      
+PRIMARY              0          1          id         3          BTREE     
+uk_zona_nombre       0          1          nombre     3          BTREE     
+
+FOREIGN KEYS:
+(sin claves foráneas)
+
+MUESTRAS (hasta 5 filas):
+Total filas: 4
+ - {"id":1,"nombre":"MONTERÍA","activo":1}
+ - {"id":2,"nombre":"PLANETA RICA","activo":1}
+ - {"id":3,"nombre":"CERETÉ","activo":1}
+ - {"id":4,"nombre":"AYAPEL","activo":1}
+
+CREATE TABLE:
+CREATE TABLE `zona` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `nombre` varchar(120) NOT NULL,
+  `activo` tinyint(1) NOT NULL DEFAULT 1,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_zona_nombre` (`nombre`)
+) ENGINE=InnoDB AUTO_INCREMENT=5 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
