@@ -1,6 +1,5 @@
-<?php 
+<?php
 require_once __DIR__ . '/session_boot.php';
-
 require_once __DIR__ . '/env.php';
 require_once __DIR__ . '/flash.php';
 
@@ -17,6 +16,9 @@ function nav_active(string $relativePath): string {
   $target  = rtrim(BASE_URL, '/') . $relativePath;
   return (strpos($current, $target) !== false) ? 'active' : '';
 }
+
+// helpers de rol
+$is_admin_or_auditor = in_array($rol, ['admin','auditor'], true);
 ?>
 <!-- Bootstrap CSS -->
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -52,21 +54,24 @@ function nav_active(string $relativePath): string {
           <a class="nav-link <?= nav_active('/dashboard.php') ?>" href="<?= BASE_URL ?>/dashboard.php">Dashboard</a>
         </li>
 
+        <!-- Hallazgos -->
         <li class="nav-item dropdown">
           <a class="nav-link dropdown-toggle <?= nav_active('/hallazgos') ?>" href="#" data-bs-toggle="dropdown">Hallazgos</a>
           <ul class="dropdown-menu">
-            <?php if (in_array($rol, ['admin','auditor'], true)): ?>
+            <?php if ($is_admin_or_auditor): ?>
               <li><a class="dropdown-item" href="<?= BASE_URL ?>/hallazgos/nuevo.php">Nuevo</a></li>
             <?php endif; ?>
             <li><a class="dropdown-item" href="<?= BASE_URL ?>/hallazgos/listado.php">Listado</a></li>
           </ul>
         </li>
 
+        <!-- Reportes (visible para todos) -->
         <li class="nav-item">
           <a class="nav-link <?= nav_active('/reportes.php') ?>" href="<?= BASE_URL ?>/reportes.php">Reportes</a>
         </li>
 
-        <?php if ($rol === 'admin'): ?>
+        <!-- Administración (solo admin/auditor) -->
+        <?php if ($is_admin_or_auditor): ?>
           <li class="nav-item dropdown">
             <a class="nav-link dropdown-toggle <?= nav_active('/admin') ?>" href="#" data-bs-toggle="dropdown">Administración</a>
             <ul class="dropdown-menu">
@@ -156,7 +161,6 @@ function nav_active(string $relativePath): string {
 
   let unreadCount = 0;
 
-  // ---- helpers ----
   function esc(s){ return String(s||'').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m])); }
   function setBadge(n){
     unreadCount = Math.max(0, n|0);
@@ -164,7 +168,6 @@ function nav_active(string $relativePath): string {
     badge.style.display = unreadCount>0 ? '' : 'none';
   }
 
-  // contador
   async function pullCount(){
     try{
       const r = await fetch(`${BASE}/api/notificaciones_count.php`, {credentials:'same-origin'});
@@ -173,7 +176,6 @@ function nav_active(string $relativePath): string {
     }catch(e){}
   }
 
-  // lista
   async function loadList(){
     box.innerHTML = '<div class="text-muted px-3 py-2">Cargando…</div>';
     try{
@@ -181,20 +183,15 @@ function nav_active(string $relativePath): string {
       const j = await r.json();
       if (!r.ok || !j || !j.ok) throw 0;
       const items = Array.isArray(j.items)? j.items : [];
-
-      if (!items.length){
-        box.innerHTML = '<div class="text-muted px-3 py-2">Sin notificaciones.</div>';
-        setBadge(0);
-        return;
-      }
+      if (!items.length){ box.innerHTML = '<div class="text-muted px-3 py-2">Sin notificaciones.</div>'; setBadge(0); return; }
 
       const unread = items.filter(it => !it.leido_en);
       const read   = items.filter(it =>  it.leido_en);
 
-      function renderItem(it, isUnread){
+      function item(it, isUnread){
         const when = (it.creado_en||'').replace('T',' ').substring(0,19);
         return `
-          <a href="${esc(it.url||'#')}" 
+          <a href="${esc(it.url||'#')}"
              class="dropdown-item notif-item ${isUnread?'unread':''}"
              data-notif-id="${it.id}" data-url="${esc(it.url||'')}">
             ${isUnread?'<span class="dot"></span>':''}
@@ -205,87 +202,57 @@ function nav_active(string $relativePath): string {
       }
 
       let html = '';
-      if (unread.length){
-        html += `<div class="notif-section-title">No leídas (${unread.length})</div>`;
-        html += unread.map(it => renderItem(it, true)).join('');
-      }
-      if (read.length){
-        if (unread.length) html += '<hr class="my-1">';
-        html += `<div class="notif-section-title">Leídas</div>`;
-        html += read.map(it => renderItem(it, false)).join('');
-      }
+      if (unread.length){ html += `<div class="notif-section-title">No leídas (${unread.length})</div>` + unread.map(n => item(n,true)).join(''); }
+      if (read.length){ if (unread.length) html += '<hr class="my-1">'; html += `<div class="notif-section-title">Leídas</div>` + read.map(n => item(n,false)).join(''); }
       box.innerHTML = html;
-
-      // sincroniza badge con las no leídas que acaban de cargarse
       setBadge(unread.length);
-
     }catch(e){
       box.innerHTML = '<div class="text-danger px-3 py-2">No se pudieron cargar.</div>';
     }
   }
 
-  // marcar una (delegado sobre la lista)
   box.addEventListener('click', async (ev)=>{
     const a = ev.target.closest('[data-notif-id]');
     if (!a) return;
     const id  = a.getAttribute('data-notif-id');
     const url = a.getAttribute('data-url') || '';
-
-    // si ya está leída, simplemente navega
-    if (!a.classList.contains('unread')) {
-      if (url) { ev.preventDefault(); window.location.href = url; }
-      return;
-    }
+    if (!a.classList.contains('unread')) { if (url){ ev.preventDefault(); location.href=url; } return; }
 
     ev.preventDefault();
     try{
       const body = new URLSearchParams({action:'one', id});
       const r = await fetch(`${BASE}/api/notificaciones_mark.php`, {
-        method:'POST',
-        credentials:'same-origin',
-        headers:{'Content-Type':'application/x-www-form-urlencoded'},
-        body
+        method:'POST', credentials:'same-origin',
+        headers:{'Content-Type':'application/x-www-form-urlencoded'}, body
       });
       if (r.ok){
-        // feedback inmediato
-        a.classList.remove('unread');
-        const dot = a.querySelector('.dot'); if (dot) dot.remove();
+        a.classList.remove('unread'); const dot=a.querySelector('.dot'); if (dot) dot.remove();
         setBadge(unreadCount - 1);
       }
     }catch(e){}
-
-    if (url) window.location.href = url;
+    if (url) location.href = url;
   });
 
-  // marcar todas
   async function markAll(ev){
     ev?.preventDefault();
     try{
       const body = new URLSearchParams({action:'all'});
       const r = await fetch(`${BASE}/api/notificaciones_mark.php`, {
-        method:'POST',
-        credentials:'same-origin',
-        headers:{'Content-Type':'application/x-www-form-urlencoded'},
-        body
+        method:'POST', credentials:'same-origin',
+        headers:{'Content-Type':'application/x-www-form-urlencoded'}, body
       });
       if (r.ok){
         setBadge(0);
-        // apagar visualmente las que estén en el popup
-        box.querySelectorAll('.notif-item.unread').forEach(el=>{
-          el.classList.remove('unread');
-          const dot = el.querySelector('.dot'); if (dot) dot.remove();
-        });
+        box.querySelectorAll('.notif-item.unread').forEach(el=>{ el.classList.remove('unread'); el.querySelector('.dot')?.remove(); });
       }
     }catch(e){}
   }
 
-  // eventos
   btn?.addEventListener('click', loadList);
   mark?.addEventListener('click', markAll);
 
-  // refresco periódico del contador
   setInterval(pullCount, 20000);
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) pullCount(); });
+  document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) pullCount(); });
   pullCount();
 })();
 </script>

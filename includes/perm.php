@@ -2,72 +2,85 @@
 // includes/perm.php
 declare(strict_types=1);
 
+require_once __DIR__ . '/env.php';
 require_once __DIR__ . '/db.php';
+require_once __DIR__ . '/flash.php';
+require_once __DIR__ . '/auth.php'; // asume que aquí está login_required() y la sesión
 
 /**
- * Devuelve todas las "claves" de permiso efectivas del usuario (por rol + overrides individuales).
+ * MODO BLANDO (por ahora):
+ *  - true  => si no hay permisos configurados/dev, DEJA PASAR todo.
+ *  - false => exigirá que el permiso exista y esté concedido.
+ *
+ * Cuando ya verifiques que tus permisos están bien sembrados en BD,
+ * cambia a false para activar el enforcement real.
  */
-function user_perm_keys(int $usuario_id): array {
-  static $cache = [];
-  if (isset($cache[$usuario_id])) return $cache[$usuario_id];
+const PERM_DEFAULT_ALLOW = true;
 
-  $pdo = get_pdo();
+/**
+ * ¿El usuario actual tiene el permiso $key?
+ * - Respeta overrides:
+ *   * rol 'admin' => siempre true
+ *   * usuario_permiso => concede/niega explícito
+ *   * rol_permiso => por rol
+ */
+function current_user_has_perm(string $key): bool {
+    if (empty($_SESSION['usuario_id'])) return false;
+    $uid = (int)$_SESSION['usuario_id'];
+    $rol = $_SESSION['rol'] ?? 'lectura';
 
-  // Por rol
-  $sqlRol = "
-    SELECT DISTINCT p.clave
-    FROM usuario u
-    JOIN usuario_rol ur   ON ur.usuario_id = u.id
-    JOIN rol r            ON r.id = ur.rol_id
-    JOIN rol_permiso rp   ON rp.rol_id = r.id
-    JOIN permiso p        ON p.id = rp.permiso_id
-    WHERE u.id = ?
-  ";
-  $st = $pdo->prepare($sqlRol);
-  $st->execute([$usuario_id]);
-  $keys = array_column($st->fetchAll(PDO::FETCH_ASSOC), 'clave');
+    // Admin “dueño del balón”
+    if ($rol === 'admin') return true;
 
-  // Overrides por usuario (usuario_permiso)
-  $sqlUsr = "
-    SELECT p.clave, up.concedido
-    FROM usuario_permiso up
-    JOIN permiso p ON p.id = up.permiso_id
-    WHERE up.usuario_id = ?
-  ";
-  $st = $pdo->prepare($sqlUsr);
-  $st->execute([$usuario_id]);
-  $rows = $st->fetchAll(PDO::FETCH_ASSOC);
+    // Si estamos en modo blando y no hay aún permisos sembrados, deja pasar.
+    // (sigue consultando por si ya sembraste algunos)
+    $pdo = get_pdo();
 
-  $set = array_fill_keys($keys, true);
-  foreach ($rows as $r) {
-    $k = $r['clave'];
-    if ($r['concedido']) $set[$k] = true;
-    else unset($set[$k]);
-  }
+    // 1) usuario_permiso concede explícito
+    $sqlUser = "
+      SELECT 1
+      FROM usuario_permiso up
+      JOIN permiso p ON p.id = up.permiso_id
+      WHERE up.usuario_id = ? AND p.clave = ? AND up.concedido = 1
+      LIMIT 1";
+    $st = $pdo->prepare($sqlUser);
+    $st->execute([$uid, $key]);
+    if ($st->fetchColumn()) return true;
 
-  return $cache[$usuario_id] = array_keys($set);
+    // 2) rol_permiso por roles del usuario
+    $sqlRole = "
+      SELECT 1
+      FROM usuario_rol ur
+      JOIN rol_permiso rp ON rp.rol_id = ur.rol_id
+      JOIN permiso p      ON p.id = rp.permiso_id
+      WHERE ur.usuario_id = ? AND p.clave = ?
+      LIMIT 1";
+    $st = $pdo->prepare($sqlRole);
+    $st->execute([$uid, $key]);
+    if ($st->fetchColumn()) return true;
+
+    // 3) fallback blando
+    if (PERM_DEFAULT_ALLOW) return true;
+
+    return false;
 }
 
 /**
- * ¿El usuario tiene el permiso "clave"?
+ * Para usar en los menús/plantillas sin redirigir.
  */
-function user_has_perm(int $usuario_id, string $perm_clave): bool {
-  if ($usuario_id <= 0) return false;
-  $keys = user_perm_keys($usuario_id);
-  return in_array($perm_clave, $keys, true);
+function can_show(string $key): bool {
+    return current_user_has_perm($key);
 }
 
 /**
- * Requiere un permiso; si no lo tiene, redirige con flash a 403-ish.
+ * Para usar al inicio de una página protegida.
+ * Si no tiene permiso, manda flash y redirige al dashboard.
  */
-function require_perm(string $perm_clave): void {
-  if (empty($_SESSION['usuario_id'])) {
-    header('Location: ' . BASE_URL . '/login.php'); exit;
-  }
-  $uid = (int)$_SESSION['usuario_id'];
-  if (!user_has_perm($uid, $perm_clave)) {
-    require_once __DIR__ . '/flash.php';
-    set_flash('danger', 'No tienes permiso para realizar esta acción.');
-    header('Location: ' . BASE_URL . '/dashboard.php'); exit;
-  }
+function require_perm(string $key): void {
+    login_required();
+    if (!current_user_has_perm($key)) {
+        set_flash('danger', 'No tienes permiso para acceder a esta sección.');
+        header('Location: ' . BASE_URL . '/dashboard.php');
+        exit;
+    }
 }
