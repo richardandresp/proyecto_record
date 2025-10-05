@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/session_boot.php';
 require_once __DIR__ . '/env.php';
+require_once __DIR__ . '/acl.php';
 require_once __DIR__ . '/flash.php';
 
 $flash = consume_flash();
@@ -58,17 +59,21 @@ $is_admin_or_auditor = in_array($rol, ['admin','auditor'], true);
         <li class="nav-item dropdown">
           <a class="nav-link dropdown-toggle <?= nav_active('/hallazgos') ?>" href="#" data-bs-toggle="dropdown">Hallazgos</a>
           <ul class="dropdown-menu">
-            <?php if ($is_admin_or_auditor): ?>
-              <li><a class="dropdown-item" href="<?= BASE_URL ?>/hallazgos/nuevo.php">Nuevo</a></li>
+           <?php if (in_array($rol, ['admin','auditor'], true)): ?>
+            <li><a class="dropdown-item" href="<?= BASE_URL ?>/hallazgos/nuevo.php">Nuevo</a></li>
             <?php endif; ?>
+
             <li><a class="dropdown-item" href="<?= BASE_URL ?>/hallazgos/listado.php">Listado</a></li>
           </ul>
         </li>
 
         <!-- Reportes (visible para todos) -->
-        <li class="nav-item">
-          <a class="nav-link <?= nav_active('/reportes.php') ?>" href="<?= BASE_URL ?>/reportes.php">Reportes</a>
-        </li>
+        <?php if (has_perm('auditoria.reportes.ver')): ?>
+          <li class="nav-item">
+            <a class="nav-link <?= nav_active('/reportes.php') ?>" href="<?= BASE_URL ?>/reportes.php">Reportes</a>
+          </li>
+        <?php endif; ?>
+
 
         <!-- Administración (solo admin/auditor) -->
         <?php if ($is_admin_or_auditor): ?>
@@ -84,6 +89,7 @@ $is_admin_or_auditor = in_array($rol, ['admin','auditor'], true);
               <li><a class="dropdown-item" href="<?= BASE_URL ?>/admin/pdv.php">Puntos de Venta</a></li>
               <li><hr class="dropdown-divider"></li>
               <li><a class="dropdown-item" href="<?= BASE_URL ?>/admin/config.php">Configuración</a></li>
+              <li><a class="dropdown-item" href="<?= BASE_URL ?>/admin/permisos.php">Permisos y Accesos</a></li>
             </ul>
           </li>
         <?php endif; ?>
