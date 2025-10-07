@@ -3,48 +3,47 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/../../../includes/session_boot.php';
-header('Content-Type: application/json; charset=utf-8');
-
-if (empty($_SESSION['usuario_id'])) { http_response_code(401); echo json_encode(['ok'=>false,'error'=>'unauthorized']); exit; }
-
 require_once __DIR__ . '/../../../includes/env.php';
 require_once __DIR__ . '/../../../includes/db.php';
 require_once __DIR__ . '/../../../includes/auth.php';
 
-login_required();
-require_roles(['admin']); // Solo admin gestiona permisos
+header('Content-Type: application/json; charset=utf-8');
 
-$pdo = get_pdo();
+login_required();
+require_roles(['admin']);
+
+$pdo = function_exists('get_pdo') ? get_pdo() : getDB();
 
 $rol_id    = (int)($_GET['rol_id'] ?? 0);
 $modulo_id = (int)($_GET['modulo_id'] ?? 0);
 
-if ($rol_id<=0 || $modulo_id<=0) {
-  http_response_code(400);
-  echo json_encode(['ok'=>false,'error'=>'parámetros inválidos']); exit;
+if ($rol_id <= 0 || $modulo_id <= 0) {
+  echo json_encode(['ok'=>false,'error'=>'bad_params']); exit;
 }
 
-// Permisos definidos para el módulo
-$sql = "SELECT p.id, p.clave, p.nombre
-        FROM permiso p
-        WHERE p.modulo_id = ?
-        ORDER BY p.nombre ASC";
-$st = $pdo->prepare($sql);
+// catálogo de permisos del módulo
+$st = $pdo->prepare("SELECT id, clave, nombre FROM permiso WHERE modulo_id = ? ORDER BY clave ASC");
 $st->execute([$modulo_id]);
-$perms = $st->fetchAll(PDO::FETCH_ASSOC);
+$perms = $st->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
-// Cuáles están asignados al rol
-$st2 = $pdo->prepare("SELECT permiso_id FROM rol_permiso WHERE rol_id=?");
-$st2->execute([$rol_id]);
-$have = array_map('intval', $st2->fetchAll(PDO::FETCH_COLUMN)) ?: [];
+// permisos ya asignados al rol en este módulo
+$st2 = $pdo->prepare("
+  SELECT p.id
+  FROM rol_permiso rp
+  JOIN permiso p ON p.id = rp.permiso_id
+  WHERE rp.rol_id = ? AND p.modulo_id = ?
+");
+$st2->execute([$rol_id, $modulo_id]);
+$assignedIds = array_map('intval', $st2->fetchAll(PDO::FETCH_COLUMN));
 
-$out = array_map(function($p) use ($have){
-  return [
+$items = [];
+foreach ($perms as $p) {
+  $items[] = [
     'id'      => (int)$p['id'],
     'clave'   => (string)$p['clave'],
     'nombre'  => (string)$p['nombre'],
-    'checked' => in_array((int)$p['id'], $have, true),
+    'checked' => in_array((int)$p['id'], $assignedIds, true),
   ];
-}, $perms);
+}
 
-echo json_encode(['ok'=>true, 'items'=>$out], JSON_UNESCAPED_UNICODE);
+echo json_encode(['ok'=>true, 'items'=>$items], JSON_UNESCAPED_UNICODE);

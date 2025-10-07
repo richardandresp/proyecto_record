@@ -5,6 +5,8 @@ require_once __DIR__ . '/../../includes/db.php';
 require_once __DIR__ . '/../../includes/auth.php';
 
 login_required();
+login_required();
+require_perm('auditoria.hallazgo.edit');
 require_roles(['admin']);   // <-- solo admin
 
 $pdo = getDB();

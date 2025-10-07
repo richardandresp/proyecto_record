@@ -14,7 +14,7 @@ $pdo = function_exists('get_pdo') ? get_pdo() : getDB();
 
 /* ===== Datos base ===== */
 
-// Módulos activos (catálogo para switches)
+// Módulos activos (catálogo para switches en pestaña Usuarios)
 $modulos = $pdo->query("
   SELECT id, nombre, clave
   FROM modulo
@@ -22,7 +22,7 @@ $modulos = $pdo->query("
   ORDER BY nombre ASC
 ")->fetchAll(PDO::FETCH_ASSOC);
 
-// Usuarios con módulos actuales (texto para la columna)
+// Usuarios con texto de módulos actuales
 $sqlUsuarios = "
   SELECT
     u.id,
@@ -53,39 +53,59 @@ foreach ($umRows as $r) {
   $umap[$u][$m] = (int)$r['activo'];
 }
 
-/* ===== Roles → Permisos por módulo (solo lectura por ahora) ===== */
-$sqlRoles = "
+/* ===== Roles y permisos por módulo (mostrar TODOS los módulos) ===== */
+
+// Todos los roles
+$rolesAll = $pdo->query("
+  SELECT id, clave AS rol_clave, nombre AS rol_nombre
+  FROM rol
+  ORDER BY nombre ASC
+")->fetchAll(PDO::FETCH_ASSOC);
+
+// Todos los módulos activos (catálogo a listar SIEMPRE)
+$modsAll = $pdo->query("
+  SELECT id, nombre
+  FROM modulo
+  WHERE activo = 1
+  ORDER BY nombre ASC
+")->fetchAll(PDO::FETCH_ASSOC);
+
+// Mapa permisos existentes por (rol_id, modulo_id) -> "clave1, clave2, ..."
+$permRows = $pdo->query("
   SELECT
-    r.id,
-    r.clave AS rol_clave,
-    r.nombre AS rol_nombre,
-    mo.id   AS modulo_id,
-    mo.nombre AS modulo_nombre,
-    COALESCE(GROUP_CONCAT(DISTINCT p.clave ORDER BY p.clave SEPARATOR ', '), '') AS permisos
+    r.id              AS rol_id,
+    p.modulo_id       AS modulo_id,
+    GROUP_CONCAT(DISTINCT p.clave ORDER BY p.clave SEPARATOR ', ') AS perms
   FROM rol r
   LEFT JOIN rol_permiso rp ON rp.rol_id = r.id
-  LEFT JOIN permiso p      ON p.id = rp.permiso_id
-  LEFT JOIN modulo  mo     ON mo.id = p.modulo_id
-  GROUP BY r.id, rol_clave, rol_nombre, mo.id, modulo_nombre
-  ORDER BY r.nombre ASC, mo.nombre ASC
-";
-$roles = $pdo->query($sqlRoles)->fetchAll(PDO::FETCH_ASSOC);
+  LEFT JOIN permiso     p  ON p.id = rp.permiso_id
+  GROUP BY r.id, p.modulo_id
+")->fetchAll(PDO::FETCH_ASSOC);
 
-$rolesView = [];
-foreach ($roles as $row) {
-  $rid = (int)$row['id'];
-  if (!isset($rolesView[$rid])) {
-    $rolesView[$rid] = [
-      'rol_clave'   => $row['rol_clave'],
-      'rol_nombre'  => $row['rol_nombre'],
-      'modulos'     => [],
+$permByRoleModule = []; // [rol_id][modulo_id] => "perms string"
+foreach ($permRows as $pr) {
+  if (!empty($pr['modulo_id'])) {
+    $permByRoleModule[(int)$pr['rol_id']][(int)$pr['modulo_id']] = (string)$pr['perms'];
+  }
+}
+
+// Estructura para pintar Roles
+$rolesView = []; // [rol_id] => { rol_clave, rol_nombre, modulos: [ {modulo_id, modulo_nombre, permisos}... ] }
+foreach ($rolesAll as $r) {
+  $rid = (int)$r['id'];
+  $rolesView[$rid] = [
+    'rol_clave'  => $r['rol_clave'],
+    'rol_nombre' => $r['rol_nombre'],
+    'modulos'    => []
+  ];
+  foreach ($modsAll as $m) {
+    $mid = (int)$m['id'];
+    $rolesView[$rid]['modulos'][] = [
+      'modulo_id'     => $mid,
+      'modulo_nombre' => $m['nombre'],
+      'permisos'      => $permByRoleModule[$rid][$mid] ?? ''
     ];
   }
-  $rolesView[$rid]['modulos'][] = [
-    'modulo_id'     => $row['modulo_id'],
-    'modulo_nombre' => $row['modulo_nombre'] ?: '(sin módulo)',
-    'permisos'      => $row['permisos'],
-  ];
 }
 
 include __DIR__ . '/../../includes/header.php';
@@ -93,7 +113,7 @@ include __DIR__ . '/../../includes/header.php';
 <div class="container py-3">
   <div class="d-flex align-items-center justify-content-between mb-3">
     <h3 class="mb-0">Permisos y Accesos</h3>
-    <span class="text-muted small">Edición: activar/desactivar módulos por usuario</span>
+    <span class="text-muted small">Edición: activar/desactivar módulos por usuario y gestionar permisos por rol/módulo</span>
   </div>
 
   <ul class="nav nav-tabs" id="permTabs" role="tablist">
@@ -123,9 +143,10 @@ include __DIR__ . '/../../includes/header.php';
           <tbody>
             <?php if (!$usuarios): ?>
               <tr><td colspan="6" class="text-center text-muted">No hay usuarios.</td></tr>
-            <?php else: foreach ($usuarios as $u): 
+            <?php else: foreach ($usuarios as $u):
               $uid = (int)$u['id'];
-              $modsTxt = $u['modulos'] ?: '—';
+              // 🔧 FIX del warning: si no viene la clave, usamos '—'
+              $modsTxt = ($u['modulos'] ?? '') !== '' ? $u['modulos'] : '—';
             ?>
               <tr id="row-u-<?= $uid ?>">
                 <td><?= $uid ?></td>
@@ -168,7 +189,7 @@ include __DIR__ . '/../../includes/header.php';
       </div>
     </div>
 
-    <!-- ===== ROLES (solo lectura por ahora) ===== -->
+    <!-- ===== ROLES (gestión por módulo) ===== -->
     <div class="tab-pane fade" id="pane-roles" role="tabpanel" aria-labelledby="tab-roles">
       <?php if (!$rolesView): ?>
         <div class="text-muted">No hay roles.</div>
@@ -188,18 +209,26 @@ include __DIR__ . '/../../includes/header.php';
                     <tr>
                       <th style="width:220px;">Módulo</th>
                       <th>Permisos (clave)</th>
+                      <th style="width:120px;"></th>
                     </tr>
                   </thead>
                   <tbody>
                     <?php
                       $mods = $r['modulos'] ?: [];
                       if (!$mods) {
-                        echo '<tr><td colspan="2" class="text-muted text-center">Sin permisos asignados.</td></tr>';
+                        echo '<tr><td colspan="3" class="text-muted text-center">Sin módulos activos.</td></tr>';
                       } else {
                         foreach ($mods as $m) {
                           echo '<tr>';
                           echo '<td>'.htmlspecialchars($m['modulo_nombre']).'</td>';
                           echo '<td>'.htmlspecialchars($m['permisos'] ?: '—').'</td>';
+                          echo '<td class="text-end">';
+                          echo '<button class="btn btn-outline-primary btn-sm btn-manage-perms" ';
+                          echo 'data-rol-id="'.(int)$rid.'" ';
+                          echo 'data-rol-name="'.htmlspecialchars($r['rol_nombre']).'" ';
+                          echo 'data-mod-id="'.(int)$m['modulo_id'].'" ';
+                          echo 'data-mod-name="'.htmlspecialchars($m['modulo_nombre']).'">Gestionar</button>';
+                          echo '</td>';
                           echo '</tr>';
                         }
                       }
@@ -216,11 +245,40 @@ include __DIR__ . '/../../includes/header.php';
   </div>
 </div>
 
+<!-- Modal Gestionar permisos (Rol + Módulo) -->
+<div class="modal fade" id="modalRolePerms" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-scrollable modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">
+          Permisos —
+          <span id="mrp-rol"></span>
+          <small class="text-muted">/</small>
+          <span id="mrp-mod"></span>
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      </div>
+      <div class="modal-body">
+        <div id="mrp-alert" class="alert alert-danger d-none"></div>
+        <div id="mrp-list" class="row g-2">
+          <div class="text-muted">Cargando permisos…</div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <input type="hidden" id="mrp-rol-id" value="">
+        <input type="hidden" id="mrp-mod-id" value="">
+        <button class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+        <button class="btn btn-primary" id="mrp-save">Guardar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
 (() => {
   const BASE = '<?= rtrim(BASE_URL,"/") ?>';
 
-  // Al mover un switch, guardar y actualizar el texto "Módulos habilitados"
+  // === Switches de módulos por usuario (guardado inmediato)
   document.querySelectorAll('.mod-switch').forEach(sw => {
     sw.addEventListener('change', async (ev) => {
       const el = ev.currentTarget;
@@ -239,25 +297,113 @@ include __DIR__ . '/../../includes/header.php';
         const j = await r.json();
         if (!r.ok || !j || !j.ok) throw 0;
 
-        // Recalcular la etiqueta de módulos habilitados (miramos switches checked del mismo usuario)
+        // Actualizar etiqueta de módulos habilitados
         const row = document.querySelector(`#row-u-${uid}`);
         if (row){
           const label = row.querySelector('.mods-label');
-          const checkedLabels = Array.from(document.querySelectorAll(`#mods-U${uid} .mod-switch:checked`))
-            .map(ci => {
+          const checks = document.querySelectorAll(`#mods-U${uid} .mod-switch`);
+          const names = [];
+          checks.forEach(ci => {
+            if (ci.checked) {
               const lab = row.nextElementSibling.querySelector(`label[for="${ci.id}"]`);
-              return lab ? lab.firstChild.textContent.trim() : '';
-            })
-            .filter(Boolean)
-            .sort((a,b)=> a.localeCompare(b));
-          label.textContent = checkedLabels.length ? checkedLabels.join(', ') : '—';
+              if (lab) names.push(lab.firstChild.textContent.trim());
+            }
+          });
+          names.sort((a,b)=> a.localeCompare(b));
+          label.textContent = names.length ? names.join(', ') : '—';
         }
       }catch(e){
-        // revertir visual si falló
         el.checked = !el.checked;
         alert('No se pudo guardar el cambio.');
       }
     });
+  });
+
+  // === Modal Permisos por Rol/Módulo ===
+  const modalEl = document.getElementById('modalRolePerms');
+  const modal = new bootstrap.Modal(modalEl);
+  const mrpRol = document.getElementById('mrp-rol');
+  const mrpMod = document.getElementById('mrp-mod');
+  const mrpRolId = document.getElementById('mrp-rol-id');
+  const mrpModId = document.getElementById('mrp-mod-id');
+  const mrpList = document.getElementById('mrp-list');
+  const mrpAlert = document.getElementById('mrp-alert');
+  const mrpSave = document.getElementById('mrp-save');
+
+  function showErr(msg){
+    mrpAlert.textContent = msg || 'Error';
+    mrpAlert.classList.remove('d-none');
+  }
+  function hideErr(){ mrpAlert.classList.add('d-none'); }
+
+  // Abrir modal
+  document.querySelectorAll('.btn-manage-perms').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      hideErr();
+      mrpRol.textContent = btn.getAttribute('data-rol-name') || '';
+      mrpMod.textContent = btn.getAttribute('data-mod-name') || '';
+      mrpRolId.value = btn.getAttribute('data-rol-id') || '';
+      mrpModId.value = btn.getAttribute('data-mod-id') || '';
+      mrpList.innerHTML = '<div class="text-muted">Cargando permisos…</div>';
+      modal.show();
+
+      try{
+        const qs = new URLSearchParams({ rol_id: mrpRolId.value, modulo_id: mrpModId.value });
+        const r = await fetch(`${BASE}/admin/api/role_perms_get.php?`+qs.toString(), { credentials:'same-origin' });
+        const j = await r.json();
+        if (!r.ok || !j || !j.ok) throw 0;
+
+        const items = Array.isArray(j.items) ? j.items : [];
+        if (!items.length){
+          mrpList.innerHTML = '<div class="text-muted">Este módulo no tiene permisos definidos.</div>';
+        } else {
+          mrpList.innerHTML = items.map(it => `
+            <div class="col-md-6">
+              <div class="form-check">
+                <input class="form-check-input mrp-chk" type="checkbox" id="perm-${it.id}" value="${it.id}" ${it.checked ? 'checked':''}>
+                <label class="form-check-label" for="perm-${it.id}">
+                  <b>${it.clave}</b> <small class="text-muted">— ${it.nombre||''}</small>
+                </label>
+              </div>
+            </div>
+          `).join('');
+        }
+      }catch(e){
+        mrpList.innerHTML = '';
+        showErr('No se pudieron cargar los permisos.');
+      }
+    });
+  });
+
+  // Guardar
+  mrpSave.addEventListener('click', async ()=>{
+    hideErr();
+    const rol_id = mrpRolId.value;
+    const modulo_id = mrpModId.value;
+    const checks = Array.from(mrpList.querySelectorAll('.mrp-chk:checked')).map(c => c.value);
+
+    try{
+      const body = new URLSearchParams();
+      body.set('rol_id', rol_id);
+      body.set('modulo_id', modulo_id);
+      checks.forEach(v => body.append('perms[]', v));
+
+      const r = await fetch(`${BASE}/admin/api/role_perms_save.php`, {
+        method:'POST',
+        credentials:'same-origin',
+        headers:{'Content-Type':'application/x-www-form-urlencoded'},
+        body
+      });
+      const j = await r.json();
+      if (!r.ok || !j || !j.ok) throw 0;
+
+      // Refrescar la fila de ese rol/módulo en la tabla (texto permisos)
+      // Simple: recargar la página para mantener consistencia
+      location.reload();
+
+    }catch(e){
+      showErr('No se pudo guardar. Intenta de nuevo.');
+    }
   });
 })();
 </script>

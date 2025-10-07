@@ -1,4 +1,5 @@
-<?php declare(strict_types=1);
+<?php
+declare(strict_types=1);
 // public/hallazgos/responder_guardar.php
 
 require_once __DIR__ . '/../../includes/session_boot.php';
@@ -12,6 +13,9 @@ ini_set('display_startup_errors','1');
 error_reporting(E_ALL);
 
 login_required();
+login_required();
+require_perm('auditoria.hallazgo.reply'); // << permite a quien tenga el permiso
+
 
 // rol/uid actuales
 $rol = $_SESSION['rol'] ?? 'lectura';

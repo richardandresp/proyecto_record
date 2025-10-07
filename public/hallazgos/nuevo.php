@@ -7,6 +7,8 @@ require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/guards.php';
 
 login_required();
+login_required();
+require_perm('auditoria.hallazgo.create');
 require_roles(['admin','auditor']);  // admin o auditor
 
 $pdo   = getDB();
