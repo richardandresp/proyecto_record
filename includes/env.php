@@ -7,10 +7,11 @@ date_default_timezone_set('America/Bogota');
 // -----------------------------------------
 // Config DB
 // -----------------------------------------
+// auditoria_app/includes/env.php
 define('DB_HOST', 'localhost');
 define('DB_NAME', 'auditoria_db');
-define('DB_USER', 'auditoria_user');
-define('DB_PASS', 'TuPasswordFuerte');
+define('DB_USER', 'root');      // ← tu usuario real
+define('DB_PASS', '');          // ← tu contraseña real (vacía en XAMPP por defecto)
 define('DB_CHARSET', 'utf8mb4');
 
 // -----------------------------------------

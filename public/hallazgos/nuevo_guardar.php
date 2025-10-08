@@ -1,12 +1,28 @@
 <?php
-require_once __DIR__ . '/../../includes/session_boot.php';
-require_once __DIR__ . '/../../includes/env.php';
-require_once __DIR__ . '/../../includes/db.php';
-require_once __DIR__ . '/../../includes/auth.php';
-require_once __DIR__ . '/../../includes/flash.php';   // <-- ¡importante!
+declare(strict_types=1);
 
-login_required();
-require_roles(['admin','auditor']);
+$REQUIRED_MODULE = 'auditoria';
+$REQUIRED_PERMS  = ['auditoria.access','auditoria.hallazgo.create'];
+
+require_once __DIR__ . '/../../includes/page_boot.php'; // boot común: ya te da $pdo, $uid, $rol
+
+// Shim de flash (por si no está cargado)
+if (!function_exists('set_flash')) {
+  function set_flash(string $type, string $msg): void {
+    if (!isset($_SESSION)) session_start();
+    $_SESSION['__flash'][] = ['type'=>$type, 'msg'=>$msg, 'ts'=>time()];
+  }
+}
+if (!function_exists('consume_flash')) {
+  function consume_flash(): array {
+    if (!isset($_SESSION)) session_start();
+    $f = $_SESSION['__flash'] ?? [];
+    unset($_SESSION['__flash']);
+    return $f;
+  }
+}
+
+// (desde aquí continúa tu código actual de listado… ya tienes $pdo, $uid, $rol)
 
 $pdo = getDB();
 

@@ -1,15 +1,15 @@
 <?php
-// public/hallazgos/nuevo.php
-require_once __DIR__ . '/../../includes/session_boot.php';
-require_once __DIR__ . '/../../includes/env.php';
-require_once __DIR__ . '/../../includes/db.php';
-require_once __DIR__ . '/../../includes/auth.php';
-require_once __DIR__ . '/../../includes/guards.php';
+declare(strict_types=1);
 
-login_required();
-login_required();
-require_perm('auditoria.hallazgo.create');
-require_roles(['admin','auditor']);  // admin o auditor
+// Requisitos para esta página:
+$REQUIRED_MODULE = 'auditoria';
+$REQUIRED_PERMS  = ['auditoria.access','auditoria.hallazgo.list'];
+
+// Boot común
+require_once __DIR__ . '/../../includes/page_boot.php';
+
+// (desde aquí continúa tu código actual de listado… ya tienes $pdo, $uid, $rol)
+
 
 $pdo   = getDB();
 $zonas = $pdo->query("SELECT id, nombre FROM zona WHERE activo=1 ORDER BY nombre")->fetchAll(PDO::FETCH_ASSOC);

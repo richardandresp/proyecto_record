@@ -1,28 +1,41 @@
 <?php
-require_once __DIR__ . '/../../includes/session_boot.php';
-require_once __DIR__ . '/../../includes/env.php';
-require_once __DIR__ . '/../../includes/db.php';
-require_once __DIR__ . '/../../includes/auth.php';
+declare(strict_types=1);
 
-login_required();
-require_roles(['admin']);   // <-- solo admin
+$REQUIRED_MODULE = 'auditoria';
+$REQUIRED_PERMS  = ['auditoria.access']; // ajusta si tienes un permiso admin específico
 
-$pdo = getDB();
+require_once __DIR__ . '/../../includes/page_boot.php'; // te da $pdo, $uid, $rol, BASE_URL
 
+// shim de flash si no está cargado
+if (!function_exists('set_flash')) {
+  function set_flash(string $type, string $msg): void {
+    if (!isset($_SESSION)) session_start();
+    $_SESSION['__flash'][] = ['type'=>$type, 'msg'=>$msg, 'ts'=>time()];
+  }
+}
 
-// No permitir operar sobre admins del sistema
-$st = $pdo->prepare("SELECT rol FROM usuario WHERE id=? LIMIT 1");
+// lee y valida parámetros
+$id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
+$to = isset($_GET['to']) ? (int)$_GET['to'] : -1;
+
+$back = $_SERVER['HTTP_REFERER'] ?? (BASE_URL . '/admin/permisos.php');
+
+if ($id <= 0 || ($to !== 0 && $to !== 1)) {
+  set_flash('danger', 'Parámetros inválidos.');
+  header('Location: ' . $back); exit;
+}
+
+// verifica que el usuario exista
+$st = $pdo->prepare("SELECT id FROM usuario WHERE id=? LIMIT 1");
 $st->execute([$id]);
-$u = $st->fetch();
-if (!$u) { http_response_code(404); echo "Usuario no encontrado."; exit; }
-if ($u['rol'] === 'admin') { http_response_code(403); echo "No se puede modificar un admin."; exit; }
+if (!$st->fetchColumn()) {
+  set_flash('danger', 'Usuario no encontrado.');
+  header('Location: ' . $back); exit;
+}
 
-// Toggle
+// actualiza estado (columna 'activo' = 0/1)
 $up = $pdo->prepare("UPDATE usuario SET activo=? WHERE id=?");
 $up->execute([$to, $id]);
 
-require_once __DIR__ . '/../../includes/flash.php';
-set_flash('success', ($to ? 'Usuario activado.' : 'Usuario inactivado.') );
-
-header('Location: ' . BASE_URL . '/admin/usuarios.php');
-exit;
+set_flash('success', $to ? 'Usuario activado.' : 'Usuario desactivado.');
+header('Location: ' . $back); exit;

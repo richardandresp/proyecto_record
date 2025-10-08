@@ -1,21 +1,54 @@
 <?php
-// public/dashboard.php
+// auditoria_app/public/dashboard.php (encabezado mínimo y guards correctos)
+
+// Diagnóstico opcional (déjalo si te sirve)
+if (!empty($_GET['diag'])) {
+  require_once __DIR__ . '/../includes/session_boot.php';
+  require_once __DIR__ . '/../includes/db.php';
+  require_once __DIR__ . '/../includes/acl.php';
+  require_once __DIR__ . '/../includes/acl_suite.php';
+  $uid = (int)($_SESSION['usuario_id'] ?? 0);
+  $hasModule = module_enabled_for_user($uid, 'auditoria');
+  $hasAccess = function_exists('user_has_perm') ? user_has_perm('auditoria.access') : null;
+  echo "UID=$uid<br>Modulo habilitado: " . ($hasModule ? 'SI' : 'NO') . "<br>";
+  if ($hasAccess !== null) echo "Permiso auditoria.access: " . ($hasAccess ? 'SI' : 'NO');
+  exit;
+}
+
+require_once __DIR__ . '/../includes/session_boot.php';
 require_once __DIR__ . '/../includes/env.php';
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/auth.php';
-login_required();
+require_once __DIR__ . '/../includes/acl.php';
+require_once __DIR__ . '/../includes/acl_suite.php';
 
-$pdo = getDB();
+login_required(); // primero: asegurar sesión
+
+$uid = (int)($_SESSION['usuario_id'] ?? 0);
+
+// === ÚNICO guard de módulo (Auditoría) ===
+if (!module_enabled_for_user($uid, 'auditoria')) {
+  render_403_and_exit();
+}
+
+// === ÚNICO permiso fino para entrar al módulo ===
+require_perm('auditoria.access');
+
+
+/* === PDO con fallback === */
+$pdo = function_exists('get_pdo') ? get_pdo() : (function_exists('getDB') ? getDB() : null);
+if (!$pdo) { http_response_code(500); echo "Error: sin conexión a BD."; exit; }
+
 $rol = $_SESSION['rol'] ?? 'lectura';
 $uid = (int)($_SESSION['usuario_id'] ?? 0);
 
-// Filtros (últimos 30 días por defecto)
+/* Filtros (últimos 30 días por defecto) */
 $hoy    = (new DateTime())->format('Y-m-d');
 $hace30 = (new DateTime('-30 days'))->format('Y-m-d');
 $desde  = $_GET['desde'] ?? $hace30;
 $hasta  = $_GET['hasta'] ?? $hoy;
 
-// VISIBILIDAD por rol (mismo criterio del listado)
+/* VISIBILIDAD por rol */
 $joinVis = '';
 $paramsVis = [];
 if ($rol === 'lider') {
@@ -38,12 +71,12 @@ if ($rol === 'lider') {
   $paramsVis[] = $uid;
 }
 
-// Rango base
-$whereRango = "h.fecha BETWEEN ? AND ?";
+/* Rango */
+$whereRango  = "h.fecha BETWEEN ? AND ?";
 $paramsRango = [$desde, $hasta];
 
-// ---------- KPIs ----------
-function kpiCount($pdo, $joinVis, $paramsVis, $whereRango, $paramsRango, $extraWhere = '') {
+/* KPIs */
+function kpiCount(PDO $pdo, string $joinVis, array $paramsVis, string $whereRango, array $paramsRango, string $extraWhere = ''): int {
   $sql = "SELECT COUNT(*) FROM hallazgo h
           $joinVis
           WHERE $whereRango " . ($extraWhere ? " AND $extraWhere" : "");
@@ -51,21 +84,20 @@ function kpiCount($pdo, $joinVis, $paramsVis, $whereRango, $paramsRango, $extraW
   $st->execute(array_merge($paramsVis, $paramsRango));
   return (int)$st->fetchColumn();
 }
+$kpiPendientes = kpiCount($pdo, $joinVis, $paramsVis, $whereRango, $paramsRango, "h.estado='pendiente'");
+$kpiVencidos   = kpiCount($pdo, $joinVis, $paramsVis, $whereRango, $paramsRango, "h.estado='vencido'");
+$kpiRespLider  = kpiCount($pdo, $joinVis, $paramsVis, $whereRango, $paramsRango, "h.estado='respondido_lider'");
+$kpiRespAdmin  = kpiCount($pdo, $joinVis, $paramsVis, $whereRango, $paramsRango, "h.estado='respondido_admin'");
 
-$kpiPendientes = kpiCount($pdo, $joinVis, $paramsVis, $whereRango, $paramsRango, "h.estado = 'pendiente'");
-$kpiVencidos   = kpiCount($pdo, $joinVis, $paramsVis, $whereRango, $paramsRango, "h.estado = 'vencido'");
-$kpiRespLider  = kpiCount($pdo, $joinVis, $paramsVis, $whereRango, $paramsRango, "h.estado = 'respondido_lider'");
-$kpiRespAdmin  = kpiCount($pdo, $joinVis, $paramsVis, $whereRango, $paramsRango, "h.estado = 'respondido_admin'");
-
-// Vencen hoy
+/* Vencen hoy */
 $sqlHoy = "SELECT COUNT(*) FROM hallazgo h
            $joinVis
-           WHERE $whereRango AND h.estado='pendiente' AND DATE(h.fecha_limite) = CURDATE()";
+           WHERE $whereRango AND h.estado='pendiente' AND DATE(h.fecha_limite)=CURDATE()";
 $stHoy = $pdo->prepare($sqlHoy);
 $stHoy->execute(array_merge($paramsVis, $paramsRango));
 $kpiVencenHoy = (int)$stHoy->fetchColumn();
 
-// ---------- Próximos a vencer (pendientes ordenados por fecha_limite) ----------
+/* Próximos a vencer */
 $limitProx = 10;
 $sqlProx = "SELECT h.id, h.fecha, h.nombre_pdv, h.fecha_limite, z.nombre AS zona, c.nombre AS cc
             FROM hallazgo h
@@ -77,9 +109,9 @@ $sqlProx = "SELECT h.id, h.fecha, h.nombre_pdv, h.fecha_limite, z.nombre AS zona
             LIMIT $limitProx";
 $stProx = $pdo->prepare($sqlProx);
 $stProx->execute(array_merge($paramsVis, $paramsRango));
-$proximos = $stProx->fetchAll();
+$proximos = $stProx->fetchAll(PDO::FETCH_ASSOC);
 
-// ---------- Top Zonas (con id para usar en JS sin mapear) ----------
+/* Top Zonas */
 $sqlTopZ = "SELECT z.id, z.nombre, COUNT(*) AS total
             FROM hallazgo h
             JOIN zona z ON z.id = h.zona_id
@@ -90,12 +122,12 @@ $sqlTopZ = "SELECT z.id, z.nombre, COUNT(*) AS total
             LIMIT 5";
 $stTZ = $pdo->prepare($sqlTopZ);
 $stTZ->execute(array_merge($paramsVis, $paramsRango));
-$topZonas = $stTZ->fetchAll();
+$topZonas = $stTZ->fetchAll(PDO::FETCH_ASSOC);
 
-// ---------- Serie para gráfica ----------
+/* Serie gráfica */
 $sqlSerie = "SELECT DATE(h.fecha) AS dia,
                     SUM(h.estado='pendiente') AS p,
-                    SUM(h.estado='vencido') AS v,
+                    SUM(h.estado='vencido')   AS v,
                     SUM(h.estado='respondido_lider') AS rl,
                     SUM(h.estado='respondido_admin') AS ra
              FROM hallazgo h
@@ -105,10 +137,22 @@ $sqlSerie = "SELECT DATE(h.fecha) AS dia,
              ORDER BY dia";
 $stSe = $pdo->prepare($sqlSerie);
 $stSe->execute(array_merge($paramsVis, $paramsRango));
-$serie = $stSe->fetchAll();
+$serie = $stSe->fetchAll(PDO::FETCH_ASSOC);
+
+/* === (3) Diagnóstico actualizado (sin funciones de la Suite) === */
+echo "<!-- PERM-DIAG ".htmlspecialchars(json_encode([
+  'auditoria.access'        => user_has_perm('auditoria.access') ? 1 : 0,
+  'auditoria.hallazgo.list' => user_has_perm('auditoria.hallazgo.list') ? 1 : 0,
+  'auditoria.hallazgo.view' => user_has_perm('auditoria.hallazgo.view') ? 1 : 0,
+  'auditoria.reportes.view' => user_has_perm('auditoria.reportes.view') ? 1 : 0,
+  // Línea 153 - CORREGIR ESTA LÍNEA
+'mod_suite_db'            => module_enabled_for_user($uid, 'auditoria') ? 1 : 0,
+]))." -->";
 
 include __DIR__ . '/../includes/header.php';
 ?>
+<!-- … (el HTML/JS que ya tenías se mantiene igual) … -->
+
 <div class="container">
   <div class="d-flex justify-content-between align-items-center mb-3">
     <h3>Dashboard</h3>
@@ -249,7 +293,7 @@ include __DIR__ . '/../includes/header.php';
   </div>
 
   <?php if (in_array($rol, ['admin','supervisor'], true)): ?>
-  <!-- Bloque de control: líderes con “respondido por Admin” -->
+  <!-- Bloque de control: líderes con "respondido por Admin" -->
   <div class="row g-3 mt-2">
     <div class="col-12">
       <div class="card border-0 shadow-sm">
@@ -289,7 +333,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const ctx = document.getElementById('chartEstados');
   const data = <?= json_encode($serie ?: []) ?>;
 
-  const labels = data.map(d => d.dia);
+  const labels   = data.map(d => d.dia);
   const pendientes = data.map(d => Number(d.p || 0));
   const vencidos   = data.map(d => Number(d.v || 0));
   const respLider  = data.map(d => Number(d.rl || 0));
@@ -297,15 +341,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
   new Chart(ctx, {
     type: 'line',
-    data: {
-      labels,
-      datasets: [
-        { label: 'Pendientes', data: pendientes, tension: .3 },
-        { label: 'Vencidos', data: vencidos, tension: .3 },
-        { label: 'Resp. Líder', data: respLider, tension: .3 },
-        { label: 'Resp. Admin', data: respAdmin, tension: .3 },
-      ]
-    },
+    data: { labels, datasets: [
+      { label: 'Pendientes', data: pendientes, tension: .3 },
+      { label: 'Vencidos',   data: vencidos,   tension: .3 },
+      { label: 'Resp. Líder',data: respLider,  tension: .3 },
+      { label: 'Resp. Admin',data: respAdmin,  tension: .3 },
+    ]},
     options: {
       responsive: true,
       interaction: { mode: 'index', intersect: false },
@@ -328,7 +369,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const zonaId = btn.getAttribute('data-zid');
     const zonaNombre = btn.getAttribute('data-zona-nombre') || '';
 
-    // toggle si ya abierto
     const next = tr.nextElementSibling;
     if (next && next.classList.contains('detalle-cc-zona')) { next.remove(); return; }
     document.querySelectorAll('#tabla-top-zonas .detalle-cc-zona').forEach(x => x.remove());
@@ -389,7 +429,6 @@ document.addEventListener('DOMContentLoaded', () => {
         `;
       }).join('');
 
-
       detailRow.innerHTML = `
         <td></td>
         <td colspan="3">
@@ -399,15 +438,14 @@ document.addEventListener('DOMContentLoaded', () => {
               <table class="table table-sm align-middle mb-0">
                 <thead class="table-light">
                     <tr>
-                    <th style="width:50px">#</th>
-                    <th>CC</th>
-                    <th>Total</th>
-                    <th>Vencidos</th>
-                    <th>% Venc.</th>
-                    <th style="width:120px"></th>
+                      <th style="width:50px">#</th>
+                      <th>CC</th>
+                      <th>Total</th>
+                      <th>Vencidos</th>
+                      <th>% Venc.</th>
+                      <th style="width:120px"></th>
                     </tr>
                   </thead>
-
                 <tbody>${rows}</tbody>
               </table>
             </div>
@@ -418,7 +456,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // ===== Líderes con respondido por Admin (ranking + % y detalle CC) =====
+  // ===== Líderes con respondido por Admin =====
   const wrapSR = document.getElementById('sr');
   if (wrapSR) {
     const DESDE2 = wrapSR.dataset.desde || '';
@@ -426,7 +464,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const tablaL = document.getElementById('tabla-top-lideres-sr');
     const tbodyL = tablaL.querySelector('tbody');
 
-    // cargar ranking
     (async () => {
       try {
         const url = '<?= BASE_URL ?>/api/top_lideres_sin_respuesta.php?desde=' + encodeURIComponent(DESDE2) + '&hasta=' + encodeURIComponent(HASTA2);
@@ -475,7 +512,6 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     })();
 
-    // toggle detalle por líder
     tablaL.addEventListener('click', async (ev) => {
       const btn = ev.target.closest('.toggle-cc-lider');
       if (!btn) return;
@@ -548,7 +584,7 @@ document.addEventListener('DOMContentLoaded', () => {
           <td></td>
           <td colspan="4">
             <div class="p-2 bg-white border rounded">
-              <div class="mb-2"><b>CC con “respondido por Admin” de ${escapeHtml(nombre)}</b></div>
+              <div class="mb-2"><b>CC con "respondido por Admin" de ${escapeHtml(nombre)}</b></div>
               <div class="table-responsive">
                 <table class="table table-sm align-middle mb-0">
                   <thead class="table-light">

@@ -1,13 +1,23 @@
 <?php
-require_once __DIR__ . '/../../includes/session_boot.php';
-require_once __DIR__ . '/../../includes/env.php';
-require_once __DIR__ . '/../../includes/db.php';
-require_once __DIR__ . '/../../includes/auth.php';
+declare(strict_types=1);
 
-login_required();
-require_roles(['admin']);   // <-- solo admin
+$REQUIRED_MODULE = 'auditoria';
+$REQUIRED_PERMS  = ['auditoria.access']; // agrega uno fino si tienes p.ej. 'auditoria.admin.users'
+require_once __DIR__ . '/../../includes/page_boot.php'; // ya tienes $pdo, $uid, $rol, BASE_URL y flash
 
-$pdo = getDB();
+// ==== roles: traer de tabla 'rol' (fallback a lista fija si no existe) ====
+$roles = [];
+try {
+  $rows = $pdo->query("SELECT clave FROM rol ORDER BY clave")->fetchAll(PDO::FETCH_COLUMN);
+  if ($rows) {
+    $roles = array_values(array_unique(array_map('strval', $rows)));
+  }
+} catch (Throwable $e) {
+  // si no existe tabla 'rol', usa listado fijo
+}
+if (!$roles) {
+  $roles = ['auditor','supervisor','lider','auxiliar','lectura','admin'];
+}
 
 $msg = ''; $err = ''; $tempPass = null;
 
@@ -23,17 +33,25 @@ function gen_temp_password(int $len=10): string {
 if ($_SERVER['REQUEST_METHOD']==='POST') {
   $nombre = trim($_POST['nombre'] ?? '');
   $email  = trim($_POST['email'] ?? '');
-  $rol    = trim($_POST['rol'] ?? 'lectura');
+  $rol    = trim($_POST['rol'] ?? '');
   $tel    = trim($_POST['telefono'] ?? '');
 
-  if (!$nombre || !$email || !in_array($rol, $roles, true)) {
-    $err = 'Completa nombre, email y rol válido.';
-  } else {
+  if (!$nombre || !$email || !$rol) {
+    $err = 'Completa nombre, email y rol.';
+  } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+    $err = 'Email inválido.';
+  } elseif (!in_array($rol, $roles, true)) {
+    $err = 'Rol inválido.';
+  }
+
+  if (!$err) {
     try {
-      // Validar email único
+      // Email único
       $st = $pdo->prepare("SELECT 1 FROM usuario WHERE email=? LIMIT 1");
       $st->execute([$email]);
-      if ($st->fetch()) { throw new Exception('El email ya existe.'); }
+      if ($st->fetchColumn()) {
+        throw new Exception('El email ya existe.');
+      }
 
       $tempPass = gen_temp_password();
       $hash = password_hash($tempPass, PASSWORD_DEFAULT);
@@ -44,10 +62,15 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
       ");
       $ins->execute([$nombre,$email,$tel,$rol,$hash]);
 
-      $msg = "Usuario creado. Entrega esta contraseña temporal al usuario: ".$tempPass;
+      set_flash('success', 'Usuario creado correctamente.');
+      // si quieres mostrar la contraseña temporal en la lista, puedes guardarla en otro flash
+      set_flash('warning', 'Contraseña temporal: ' . $tempPass);
+
+      header('Location: ' . BASE_URL . '/admin/usuarios.php');
+      exit;
     } catch (Throwable $e) {
-      $err = 'Error al crear: ' . htmlspecialchars($e->getMessage());
-      $tempPass = null;
+      $err = 'Error al crear: ' . $e->getMessage();
+      $tempPass = null; // no mostramos pass si falló
     }
   }
 }
@@ -56,8 +79,13 @@ include __DIR__ . '/../../includes/header.php';
 ?>
 <div class="container">
   <h3>Nuevo usuario</h3>
-  <?php if ($msg): ?><div class="alert alert-success"><?= $msg ?></div><?php endif; ?>
-  <?php if ($err): ?><div class="alert alert-danger"><?= $err ?></div><?php endif; ?>
+
+  <?php if (!empty($err)): ?>
+    <div class="alert alert-danger alert-dismissible fade show" role="alert">
+      <?= htmlspecialchars($err) ?>
+      <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Cerrar"></button>
+    </div>
+  <?php endif; ?>
 
   <form method="post" class="row g-3">
     <div class="col-md-6">
@@ -71,8 +99,11 @@ include __DIR__ . '/../../includes/header.php';
     <div class="col-md-4">
       <label class="form-label">Rol *</label>
       <select name="rol" class="form-select" required>
+        <option value="">Seleccione...</option>
         <?php foreach ($roles as $r): ?>
-          <option value="<?= $r ?>" <?= (($_POST['rol'] ?? '')===$r)?'selected':'' ?>><?= ucfirst($r) ?></option>
+          <option value="<?= htmlspecialchars($r) ?>" <?= (($_POST['rol'] ?? '')===$r)?'selected':'' ?>>
+            <?= htmlspecialchars(ucfirst($r)) ?>
+          </option>
         <?php endforeach; ?>
       </select>
     </div>
@@ -85,11 +116,7 @@ include __DIR__ . '/../../includes/header.php';
       <a href="<?= BASE_URL ?>/admin/usuarios.php" class="btn btn-secondary">Volver</a>
     </div>
   </form>
-
-  <?php if ($tempPass): ?>
-    <div class="alert alert-warning mt-3">
-      <b>Contraseña temporal:</b> <code><?= htmlspecialchars($tempPass) ?></code><br>
-      El usuario deberá <b>cambiarla al iniciar sesión</b>.
-    </div>
-  <?php endif; ?>
 </div>
+<?php
+$__footer = __DIR__ . '/../../includes/footer.php';
+if (is_file($__footer)) include $__footer;

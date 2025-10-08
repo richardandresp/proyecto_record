@@ -1,13 +1,14 @@
 <?php
-require_once __DIR__ . '/../../includes/session_boot.php';
-require_once __DIR__ . '/../../includes/env.php';
-require_once __DIR__ . '/../../includes/db.php';
-require_once __DIR__ . '/../../includes/auth.php';
+declare(strict_types=1);
 
-login_required();
-login_required();
-require_perm('auditoria.hallazgo.reply');
-require_roles(['admin','auditor','supervisor','lider','auxiliar']);
+// Requisitos para esta página:
+$REQUIRED_MODULE = 'auditoria';
+$REQUIRED_PERMS  = ['auditoria.access','auditoria.hallazgo.list'];
+
+// Boot común
+require_once __DIR__ . '/../../includes/page_boot.php';
+
+// (desde aquí continúa tu código actual de listado… ya tienes $pdo, $uid, $rol)
 
 $pdo = getDB();
 

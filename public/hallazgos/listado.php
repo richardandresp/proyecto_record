@@ -1,16 +1,14 @@
 <?php
-require_once __DIR__ . '/../../includes/session_boot.php';
-require_once __DIR__ . '/../../includes/env.php';
-require_once __DIR__ . '/../../includes/db.php';
-require_once __DIR__ . '/../../includes/auth.php';
-require_once __DIR__ . '/../../includes/hallazgo_repo.php';
+declare(strict_types=1);
 
-login_required();
-require_once __DIR__ . '/../../includes/perm.php';
-login_required();
-require_perm('auditoria.hallazgo.view');
-require_perm('auditoria.access');
-require_roles(['admin','auditor','supervisor','lider','auxiliar']); // lectura para todos estos
+// Requisitos para esta página:
+$REQUIRED_MODULE = 'auditoria';
+$REQUIRED_PERMS  = ['auditoria.access','auditoria.hallazgo.list'];
+
+// Boot común
+require_once __DIR__ . '/../../includes/page_boot.php';
+
+// (desde aquí continúa tu código actual de listado… ya tienes $pdo, $uid, $rol)
 
 $pdo = getDB();
 
@@ -238,7 +236,7 @@ include __DIR__ . '/../../includes/header.php';
   <div class="d-flex justify-content-between align-items-center mb-3">
     <h3 class="mb-0">Listado de Hallazgos</h3>
     <div class="d-flex gap-2">
-      <?php if (in_array($rol, ['admin','auditor'], true)): ?>
+      <?php if (user_has_perm('auditoria.hallazgo.create')): ?>
         <a class="btn btn-success" href="<?= BASE_URL ?>/hallazgos/nuevo.php">
           <i class="bi bi-plus-lg"></i> Nuevo
         </a>
@@ -422,11 +420,15 @@ include __DIR__ . '/../../includes/header.php';
             <td><small class="<?= $r['estado']==='vencido'?'text-danger fw-bold':'' ?>"><?= htmlspecialchars($r['fecha_limite']) ?></small></td>
             <td class="text-center">
               <div class="btn-group btn-group-sm" role="group" aria-label="acciones">
-                <a class="btn btn-outline-secondary" href="<?= $viewUrl ?>" title="Ver"><i class="bi bi-eye"></i></a>
-                <?php if (in_array($rol, ['admin','auditor','supervisor','lider','auxiliar'], true)): ?>
+                <?php if (user_has_perm('auditoria.hallazgo.view')): ?>
+                  <a class="btn btn-outline-secondary" href="<?= $viewUrl ?>" title="Ver"><i class="bi bi-eye"></i></a>
+                <?php endif; ?>
+                
+                <?php if (user_has_perm('auditoria.hallazgo.reply')): ?>
                   <a class="btn btn-outline-primary" href="<?= $respUrl ?>" title="Responder"><i class="bi bi-reply"></i></a>
                 <?php endif; ?>
-                <?php if (in_array($rol, ['admin','auditor'], true)): ?>
+                
+                <?php if (user_has_perm('auditoria.hallazgo.edit')): ?>
                   <a class="btn btn-outline-warning" href="<?= $editUrl ?>" title="Editar"><i class="bi bi-pencil-square"></i></a>
                 <?php endif; ?>
 
@@ -513,11 +515,13 @@ include __DIR__ . '/../../includes/header.php';
       <div class="modal-footer d-flex justify-content-between">
         <div class="text-muted small">Revisa y elige la acción que deseas realizar.</div>
         <div class="d-flex gap-2">
-          <a id="m-ver" href="#" class="btn btn-outline-secondary"><i class="bi bi-eye"></i> Ver</a>
-          <?php if (in_array($rol, ['admin','auditor','supervisor','lider','auxiliar'], true)): ?>
+          <?php if (user_has_perm('auditoria.hallazgo.view')): ?>
+            <a id="m-ver" href="#" class="btn btn-outline-secondary"><i class="bi bi-eye"></i> Ver</a>
+          <?php endif; ?>
+          <?php if (user_has_perm('auditoria.hallazgo.reply')): ?>
             <a id="m-resp" href="#" class="btn btn-primary"><i class="bi bi-reply"></i> Responder</a>
           <?php endif; ?>
-          <?php if (in_array($rol, ['admin','auditor'], true)): ?>
+          <?php if (user_has_perm('auditoria.hallazgo.edit')): ?>
             <a id="m-edit" href="#" class="btn btn-warning"><i class="bi bi-pencil-square"></i> Editar</a>
           <?php endif; ?>
         </div>
@@ -612,11 +616,13 @@ include __DIR__ . '/../../includes/header.php';
     if (evid) { wrap.style.display='block'; aev.href=evid; }
     else { wrap.style.display='none'; aev.removeAttribute('href'); }
 
-    this.querySelector('#m-ver').href = viewUrl;
-    <?php if (in_array($rol, ['admin','auditor','supervisor','lider','auxiliar'], true)): ?>
+    <?php if (user_has_perm('auditoria.hallazgo.view')): ?>
+      this.querySelector('#m-ver').href = viewUrl;
+    <?php endif; ?>
+    <?php if (user_has_perm('auditoria.hallazgo.reply')): ?>
       this.querySelector('#m-resp').href = respUrl;
     <?php endif; ?>
-    <?php if (in_array($rol, ['admin','auditor'], true)): ?>
+    <?php if (user_has_perm('auditoria.hallazgo.edit')): ?>
       this.querySelector('#m-edit').href = editUrl;
     <?php endif; ?>
   });

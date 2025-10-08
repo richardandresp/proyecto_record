@@ -217,7 +217,14 @@ include __DIR__ . '/../../includes/header.php';
                 <td><?= $r['hasta'] ?: '—' ?></td>
                 <td>
                   <?php if(!$r['hasta']): ?>
-                    <a class="btn btn-sm btn-outline-danger" href="<?= BASE_URL ?>/admin/asignaciones.php?close=1&id=<?= (int)$r['id'] ?>&t=l" onclick="return confirm('Cerrar vigencia?');">Cerrar</a>
+                    <a class="btn btn-sm btn-outline-danger"
+                      href="<?= BASE_URL ?>/admin/asignaciones.php?close=1&id=<?= (int)$r['id'] ?>&t=l"
+                      data-confirm="¿Cerrar la vigencia desde hoy?"
+                      data-confirm-type="warning"
+                      data-confirm-ok="Sí, cerrar">
+                      Cerrar
+                    </a>
+
                   <?php endif; ?>
                 </td>
               </tr>
@@ -272,7 +279,14 @@ include __DIR__ . '/../../includes/header.php';
                 <td><?= $r['hasta'] ?: '—' ?></td>
                 <td>
                   <?php if(!$r['hasta']): ?>
-                    <a class="btn btn-sm btn-outline-danger" href="<?= BASE_URL ?>/admin/asignaciones.php?close=1&id=<?= (int)$r['id'] ?>&t=a" onclick="return confirm('Cerrar vigencia?');">Cerrar</a>
+                    <a class="btn btn-sm btn-outline-danger"
+                      href="<?= BASE_URL ?>/admin/asignaciones.php?close=1&id=<?= (int)$r['id'] ?>&t=a"
+                      data-confirm="¿Cerrar la vigencia desde hoy?"
+                      data-confirm-type="warning"
+                      data-confirm-ok="Sí, cerrar">
+                      Cerrar
+                    </a>
+
                   <?php endif; ?>
                 </td>
               </tr>

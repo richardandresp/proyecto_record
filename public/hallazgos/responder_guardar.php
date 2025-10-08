@@ -1,33 +1,32 @@
 <?php
 declare(strict_types=1);
-// public/hallazgos/responder_guardar.php
 
-require_once __DIR__ . '/../../includes/session_boot.php';
-require_once __DIR__ . '/../../includes/env.php';
-require_once __DIR__ . '/../../includes/db.php';
-require_once __DIR__ . '/../../includes/auth.php';
-require_once __DIR__ . '/../../includes/flash.php';
-
-ini_set('display_errors','1');
-ini_set('display_startup_errors','1');
-error_reporting(E_ALL);
-
-login_required();
-login_required();
-require_perm('auditoria.hallazgo.reply'); // << permite a quien tenga el permiso
+// Requisitos para esta página:
+$REQUIRED_MODULE = 'auditoria';
+$REQUIRED_PERMS  = ['auditoria.access','auditoria.hallazgo.reply'];
 
 
-// rol/uid actuales
-$rol = $_SESSION['rol'] ?? 'lectura';
-$uid = (int)($_SESSION['usuario_id'] ?? 0);
+// Boot común
+require_once __DIR__ . '/../../includes/page_boot.php';
 
-// Permitir responder a estos roles (ajusta si quieres menos)
-$rolesPermitidos = ['admin','auditor','supervisor','lider','auxiliar'];
-if (!in_array($rol, $rolesPermitidos, true)) {
-  set_flash('danger', 'No tienes permiso para responder hallazgos.');
-  header('Location: ' . BASE_URL . '/hallazgos/listado.php');
-  exit;
+// Shim de flash si el proyecto no lo tiene cargado
+if (!function_exists('set_flash')) {
+  function set_flash(string $type, string $msg): void {
+    if (!isset($_SESSION)) session_start();
+    $_SESSION['__flash'][] = ['type'=>$type, 'msg'=>$msg, 'ts'=>time()];
+  }
 }
+if (!function_exists('consume_flash')) {
+  function consume_flash(): array {
+    if (!isset($_SESSION)) session_start();
+    $f = $_SESSION['__flash'] ?? [];
+    unset($_SESSION['__flash']);
+    return $f;
+  }
+}
+
+
+// (desde aquí continúa tu código actual de listado… ya tienes $pdo, $uid, $rol)
 
 $pdo = getDB();
 

@@ -3,6 +3,16 @@
 require_once __DIR__ . '/../includes/env.php';
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/auth.php';
+require_once __DIR__ . '/../includes/acl_suite.php';  // <- NUEVO
+require_once __DIR__ . '/../includes/acl.php';        // permisos finos internos
+
+$uid = (int)($_SESSION['usuario_id'] ?? 0);
+if (!module_enabled_for_user($uid, 'auditoria')) {
+    render_403_and_exit();
+}
+
+// Además, exige permiso del módulo (ejemplo):
+require_perm('auditoria.access');
 login_required();
 
 $pdo  = getDB();

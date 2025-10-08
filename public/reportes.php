@@ -1,11 +1,12 @@
 <?php
-// public/reportes.php
-require_once __DIR__ . '/../includes/env.php';
-require_once __DIR__ . '/../includes/db.php';
-require_once __DIR__ . '/../includes/auth.php';
-login_required();
-login_required();
-require_perm('auditoria.reportes.ver');
+declare(strict_types=1);
+
+$REQUIRED_MODULE = 'auditoria';
+$REQUIRED_PERMS  = ['auditoria.access','auditoria.reportes.view'];
+
+require_once __DIR__ . '/../includes/page_boot.php'; // ← ruta correcta
+
+// ya tienes $pdo, $uid, $rol disponibles desde el boot
 
 
 $pdo = getDB();

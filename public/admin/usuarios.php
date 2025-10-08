@@ -18,6 +18,18 @@ $rows = $pdo->query("
 
 include __DIR__ . '/../../includes/header.php';
 ?>
+
+<?php if (function_exists('consume_flash')): ?>
+  <?php foreach (consume_flash() as $f): ?>
+    <div class="container mt-2">
+      <div class="alert alert-<?= htmlspecialchars($f['type']) ?> alert-dismissible fade show" role="alert">
+        <?= htmlspecialchars($f['msg']) ?>
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Cerrar"></button>
+      </div>
+    </div>
+  <?php endforeach; ?>
+<?php endif; ?>
+
 <div class="container">
   <div class="d-flex justify-content-between align-items-center mb-3">
     <h3>Usuarios</h3>
