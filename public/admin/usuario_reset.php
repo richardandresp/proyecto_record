@@ -1,22 +1,36 @@
 <?php
+declare(strict_types=1);
+
 require_once __DIR__ . '/../../includes/session_boot.php';
 require_once __DIR__ . '/../../includes/env.php';
 require_once __DIR__ . '/../../includes/db.php';
 require_once __DIR__ . '/../../includes/auth.php';
+require_once __DIR__ . '/../../includes/flash.php';
 
 login_required();
-require_roles(['admin']);   // <-- solo admin
+require_roles(['admin']); // solo admin
 
 $pdo = getDB();
 
 $id = (int)($_GET['id'] ?? 0);
-if ($id <= 0) { http_response_code(400); exit('ID inválido'); }
+if ($id <= 0) {
+  set_flash('danger', 'ID inválido.');
+  header('Location: ' . BASE_URL . '/admin/usuarios.php');
+  exit;
+}
 
-// No operar sobre admins si no quieres; aquí permitimos reset, pero puedes bloquearlo:
-$st = $pdo->prepare("SELECT id,nombre,email,rol FROM usuario WHERE id=? LIMIT 1");
+// No permitir resetear admins (opcional)
+$st = $pdo->prepare("SELECT nombre, email, rol, activo FROM usuario WHERE id=? LIMIT 1");
 $st->execute([$id]);
-$u = $st->fetch();
-if (!$u) { http_response_code(404); exit('Usuario no encontrado'); }
+$u = $st->fetch(PDO::FETCH_ASSOC);
+if (!$u) {
+  set_flash('danger', 'Usuario no encontrado.');
+  header('Location: ' . BASE_URL . '/admin/usuarios.php'); exit;
+}
+if ($u['rol'] === 'admin') {
+  set_flash('warning', 'No se puede resetear la contraseña de un admin desde aquí.');
+  header('Location: ' . BASE_URL . '/admin/usuarios.php'); exit;
+}
 
 function gen_temp_password(int $len=10): string {
   $alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@$%';
@@ -25,24 +39,22 @@ function gen_temp_password(int $len=10): string {
   return $out;
 }
 
-$temp = gen_temp_password();
-$hash = password_hash($temp, PASSWORD_DEFAULT);
+try {
+  $temp = gen_temp_password();
+  $hash = password_hash($temp, PASSWORD_DEFAULT);
 
-// Actualiza hash y obliga cambio
-$up = $pdo->prepare("UPDATE usuario SET clave_hash=?, must_change_password=1, activo=1 WHERE id=?");
-$up->execute([$hash, $id]);
+  $up = $pdo->prepare("
+    UPDATE usuario
+    SET clave_hash = ?, must_change_password = 1
+    WHERE id = ?
+  ");
+  $up->execute([$hash, $id]);
 
-// Muestra la temporal para que el admin la entregue por el canal que use (correo/whatsapp)
-include __DIR__ . '/../../includes/header.php';
-?>
-<div class="container">
-  <h3>Reset de contraseña</h3>
-  <div class="alert alert-success">
-    Se generó una contraseña temporal para <b><?= htmlspecialchars($u['nombre']) ?></b> (<?= htmlspecialchars($u['email']) ?>).
-  </div>
-  <div class="alert alert-warning">
-    <b>Contraseña temporal:</b> <code><?= htmlspecialchars($temp) ?></code><br>
-    Al iniciar sesión, el sistema <b>le pedirá cambiarla</b>.
-  </div>
-  <a href="<?= BASE_URL ?>/admin/usuarios.php" class="btn btn-secondary">Volver a Usuarios</a>
-</div>
+  set_flash('success', 'Contraseña temporal generada para ' . ($u['nombre'] ?? 'usuario') .
+                      '. Entrégala al usuario: ' . $temp);
+} catch (Throwable $e) {
+  set_flash('danger', 'Error al resetear: ' . $e->getMessage());
+}
+
+header('Location: ' . BASE_URL . '/admin/usuarios.php');
+exit;
