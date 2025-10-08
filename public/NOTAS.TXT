@@ -7,3 +7,7 @@ visualizar todos los adjuntos desde el rol de amdinistrador/
 
 
 pendiente dejar todo en la normalidad sin obligación de guardar el texto en mayuscula 
+
+***********************************************************
+
+Pendiente por reparar el tema del login, salir o cerrar sesión dentro del mismo módulo
