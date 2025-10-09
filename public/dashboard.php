@@ -75,27 +75,138 @@ if ($rol === 'lider') {
 $whereRango  = "h.fecha BETWEEN ? AND ?";
 $paramsRango = [$desde, $hasta];
 
-/* KPIs */
-function kpiCount(PDO $pdo, string $joinVis, array $paramsVis, string $whereRango, array $paramsRango, string $extraWhere = ''): int {
-  $sql = "SELECT COUNT(*) FROM hallazgo h
-          $joinVis
-          WHERE $whereRango " . ($extraWhere ? " AND $extraWhere" : "");
-  $st = $pdo->prepare($sql);
-  $st->execute(array_merge($paramsVis, $paramsRango));
-  return (int)$st->fetchColumn();
-}
-$kpiPendientes = kpiCount($pdo, $joinVis, $paramsVis, $whereRango, $paramsRango, "h.estado='pendiente'");
-$kpiVencidos   = kpiCount($pdo, $joinVis, $paramsVis, $whereRango, $paramsRango, "h.estado='vencido'");
-$kpiRespLider  = kpiCount($pdo, $joinVis, $paramsVis, $whereRango, $paramsRango, "h.estado='respondido_lider'");
-$kpiRespAdmin  = kpiCount($pdo, $joinVis, $paramsVis, $whereRango, $paramsRango, "h.estado='respondido_admin'");
+// === Rango anterior del mismo tamaño (inclusivo) ===
+$dtDesde = new DateTime($desde);
+$dtHasta = new DateTime($hasta);
+$days = max(1, (int)$dtDesde->diff($dtHasta)->days + 1);
 
-/* Vencen hoy */
-$sqlHoy = "SELECT COUNT(*) FROM hallazgo h
-           $joinVis
-           WHERE $whereRango AND h.estado='pendiente' AND DATE(h.fecha_limite)=CURDATE()";
-$stHoy = $pdo->prepare($sqlHoy);
-$stHoy->execute(array_merge($paramsVis, $paramsRango));
-$kpiVencenHoy = (int)$stHoy->fetchColumn();
+$prevHasta = (clone $dtDesde)->modify('-1 day');
+$prevDesde = (clone $prevHasta)->modify('-'.($days-1).' days');
+
+$prev_desde = $prevDesde->format('Y-m-d');
+$prev_hasta = $prevHasta->format('Y-m-d');
+
+// === Etiquetas por día del rango actual (Y-m-d) ===
+$labels = [];
+for ($d = clone $dtDesde, $i=0; $i < $days; $i++, $d->modify('+1 day')) {
+  $labels[] = $d->format('Y-m-d');
+}
+// Etiquetas del rango anterior (mismo tamaño, desplazado)
+$prev_labels = [];
+for ($d = clone $prevDesde, $i=0; $i < $days; $i++, $d->modify('+1 day')) {
+  $prev_labels[] = $d->format('Y-m-d');
+}
+
+// === Helper para traer serie por día
+$fetchSerie = function(string $desde, string $hasta) use($pdo, $joinVis, $paramsVis): array {
+  $sql = "SELECT DATE(h.fecha) AS dia,
+                 SUM(h.estado='pendiente')           AS p,
+                 SUM(h.estado='vencido')             AS v,
+                 SUM(h.estado='respondido_lider')    AS rl,
+                 SUM(h.estado='respondido_admin')    AS ra
+          FROM hallazgo h
+          $joinVis
+          WHERE h.fecha BETWEEN ? AND ?
+          GROUP BY DATE(h.fecha)
+          ORDER BY dia";
+  $st = $pdo->prepare($sql);
+  $st->execute(array_merge($paramsVis, [$desde, $hasta]));
+  $rows = $st->fetchAll(PDO::FETCH_ASSOC);
+  $map = [];
+  foreach ($rows as $r) {
+    $map[$r['dia']] = [
+      'p'  => (int)($r['p']  ?? 0),
+      'v'  => (int)($r['v']  ?? 0),
+      'rl' => (int)($r['rl'] ?? 0),
+      'ra' => (int)($r['ra'] ?? 0),
+    ];
+  }
+  return $map;
+};
+
+$currMap = $fetchSerie($desde, $hasta);
+$prevMap = $fetchSerie($prev_desde, $prev_hasta);
+
+// === Alinear a los labels actuales (índice 0..N-1) ===
+$currP=[]; $currV=[]; $currRL=[]; $currRA=[];
+$prevP=[]; $prevV=[]; $prevRL=[]; $prevRA=[];
+for ($i=0; $i<$days; $i++) {
+  $d  = $labels[$i];
+  $pd = $prev_labels[$i];
+
+  $c = $currMap[$d]  ?? ['p'=>0,'v'=>0,'rl'=>0,'ra'=>0];
+  $p = $prevMap[$pd] ?? ['p'=>0,'v'=>0,'rl'=>0,'ra'=>0];
+
+  $currP[]  = $c['p'];  $prevP[]  = $p['p'];
+  $currV[]  = $c['v'];  $prevV[]  = $p['v'];
+  $currRL[] = $c['rl']; $prevRL[] = $p['rl'];
+  $currRA[] = $c['ra']; $prevRA[] = $p['ra'];
+}
+
+// Labels "bonitos" para la gráfica (fecha corta)
+$labelsPretty = array_map(function($yymd){
+  $dt = DateTime::createFromFormat('Y-m-d', $yymd);
+  return $dt ? $dt->format('d/m') : $yymd;
+}, $labels);
+
+// === 2) Helper para contar KPIs dado un rango ===
+function kpi_pack(PDO $pdo, string $joinVis, array $paramsVis, string $desde, string $hasta): array {
+  $whereBase  = "h.fecha BETWEEN ? AND ?";
+  $paramsBase = [$desde, $hasta];
+
+  $count = function(string $extraWhere = '') use($pdo, $joinVis, $paramsVis, $whereBase, $paramsBase): int {
+    $sql = "SELECT COUNT(*) FROM hallazgo h $joinVis WHERE $whereBase".($extraWhere?" AND $extraWhere":"");
+    $st = $pdo->prepare($sql);
+    $st->execute(array_merge($paramsVis, $paramsBase));
+    return (int)$st->fetchColumn();
+  };
+
+  // KPIs
+  $pendientes = $count("h.estado='pendiente'");
+  $vencidos   = $count("h.estado='vencido'");
+  $respLider  = $count("h.estado='respondido_lider'");
+  $respAdmin  = $count("h.estado='respondido_admin'");
+  $vencenHoy  = (function() use($pdo,$joinVis,$paramsVis): int {
+    $sql = "SELECT COUNT(*) FROM hallazgo h $joinVis
+            WHERE h.estado='pendiente' AND DATE(h.fecha_limite)=CURDATE()";
+    $st = $pdo->prepare($sql);
+    $st->execute($paramsVis);
+    return (int)$st->fetchColumn();
+  })();
+
+  return [
+    'pendientes' => $pendientes,
+    'vencidos'   => $vencidos,
+    'respondidos'=> $respLider + $respAdmin,
+    'vencen_hoy' => $vencenHoy, // ojo: este no compara por rango; es "hoy"
+  ];
+}
+
+// === 3) Helper de delta (% y flecha) ===
+function kpi_delta_badge(int $curr, int $prev, string $type): string {
+  // type: 'good_up' (subir es bueno), 'good_down' (bajar es bueno)
+  if ($prev === 0) {
+    if ($curr === 0) return '<small class="text-muted">= 0%</small>';
+    $arrow = $type==='good_down' ? 'text-danger bi-arrow-up-short' : 'text-success bi-arrow-up-short';
+    return '<small class="'.($type==='good_down'?'text-danger':'text-success').'"><i class="bi '.$arrow.'"></i>100%</small>';
+  }
+  $d = (($curr - $prev) * 100) / $prev;
+  $d = round($d);
+  $isUp = $d > 0;
+
+  // color/semántica por KPI
+  if ($type === 'good_down') { // menos es mejor (pendientes, vencidos)
+    $class = $isUp ? 'text-danger' : 'text-success';
+  } else { // good_up (respondidos)
+    $class = $isUp ? 'text-success' : 'text-danger';
+  }
+  $icon = $isUp ? 'bi-arrow-up-short' : 'bi-arrow-down-short';
+  return '<small class="'.$class.'"><i class="bi '.$icon.'"></i>'.($d>0?'+':'').$d.'%</small>';
+}
+
+// === 4) Empaquetar KPIs actual vs. anterior ===
+$nowPack  = kpi_pack($pdo, $joinVis, $paramsVis, $desde, $hasta);
+$prevPack = kpi_pack($pdo, $joinVis, $paramsVis, $prev_desde, $prev_hasta);
 
 /* Próximos a vencer */
 $limitProx = 10;
@@ -124,90 +235,131 @@ $stTZ = $pdo->prepare($sqlTopZ);
 $stTZ->execute(array_merge($paramsVis, $paramsRango));
 $topZonas = $stTZ->fetchAll(PDO::FETCH_ASSOC);
 
-/* Serie gráfica */
-$sqlSerie = "SELECT DATE(h.fecha) AS dia,
-                    SUM(h.estado='pendiente') AS p,
-                    SUM(h.estado='vencido')   AS v,
-                    SUM(h.estado='respondido_lider') AS rl,
-                    SUM(h.estado='respondido_admin') AS ra
-             FROM hallazgo h
-             $joinVis
-             WHERE $whereRango
-             GROUP BY DATE(h.fecha)
-             ORDER BY dia";
-$stSe = $pdo->prepare($sqlSerie);
-$stSe->execute(array_merge($paramsVis, $paramsRango));
-$serie = $stSe->fetchAll(PDO::FETCH_ASSOC);
-
 /* === (3) Diagnóstico actualizado (sin funciones de la Suite) === */
 echo "<!-- PERM-DIAG ".htmlspecialchars(json_encode([
   'auditoria.access'        => user_has_perm('auditoria.access') ? 1 : 0,
   'auditoria.hallazgo.list' => user_has_perm('auditoria.hallazgo.list') ? 1 : 0,
   'auditoria.hallazgo.view' => user_has_perm('auditoria.hallazgo.view') ? 1 : 0,
   'auditoria.reportes.view' => user_has_perm('auditoria.reportes.view') ? 1 : 0,
-  // Línea 153 - CORREGIR ESTA LÍNEA
-'mod_suite_db'            => module_enabled_for_user($uid, 'auditoria') ? 1 : 0,
+  'mod_suite_db'            => module_enabled_for_user($uid, 'auditoria') ? 1 : 0,
 ]))." -->";
 
 include __DIR__ . '/../includes/header.php';
 ?>
-<!-- … (el HTML/JS que ya tenías se mantiene igual) … -->
 
 <div class="container">
   <div class="d-flex justify-content-between align-items-center mb-3">
-    <h3>Dashboard</h3>
-    <form method="get" class="d-flex gap-2">
+    <div>
+      <h3>Dashboard</h3>
+      <!-- Contexto del rol (badge + texto) -->
+      <div class="d-flex align-items-center gap-2 mb-2">
+        <span class="badge bg-dark text-uppercase"><?= htmlspecialchars($rol) ?></span>
+        <?php if (!in_array($rol, ['admin','auditor'], true)): ?>
+          <small class="text-muted">Ves datos de tus zonas/CC asignados.</small>
+        <?php endif; ?>
+      </div>
+    </div>
+    
+    <!-- Rangos rápidos (chips) -->
+    <form method="get" class="d-flex gap-2 align-items-end">
       <input type="date" name="desde" value="<?= htmlspecialchars($desde) ?>" class="form-control">
       <input type="date" name="hasta" value="<?= htmlspecialchars($hasta) ?>" class="form-control">
       <button class="btn btn-primary">Aplicar</button>
       <a class="btn btn-secondary" href="<?= BASE_URL ?>/dashboard.php">Últimos 30 días</a>
+
+      <!-- Chips -->
+      <div class="btn-group ms-2" role="group" aria-label="Rangos rápidos">
+        <button type="button" class="btn btn-outline-secondary btn-sm" data-range="hoy">Hoy</button>
+        <button type="button" class="btn btn-outline-secondary btn-sm" data-range="7d">7d</button>
+        <button type="button" class="btn btn-outline-secondary btn-sm" data-range="30d">30d</button>
+        <button type="button" class="btn btn-outline-secondary btn-sm" data-range="mes">Mes actual</button>
+      </div>
     </form>
   </div>
 
-  <!-- KPIs -->
+  <!-- KPIs - Tarjetas con tooltips informativos -->
   <div class="row g-3">
+    <!-- Pendientes -->
     <div class="col-md-3">
-      <div class="card border-0 shadow-sm">
+      <a class="card border-0 shadow-sm text-decoration-none text-dark kpi-card"
+         href="<?= BASE_URL ?>/hallazgos/listado.php?estado=pendiente&desde=<?= urlencode($desde) ?>&hasta=<?= urlencode($hasta) ?>"
+         data-bs-toggle="tooltip" 
+         data-bs-placement="top"
+         title="📋 Hallazgos pendientes de respuesta<br>⬇️ <span class='text-success'>Bajar es bueno</span><br>Comparado con período anterior del mismo tamaño">
         <div class="card-body">
-          <div class="text-muted">Pendientes</div>
-          <div class="display-6"><?= number_format($kpiPendientes) ?></div>
-          <small class="text-muted">Dentro del rango</small>
+          <div class="d-flex justify-content-between">
+            <div class="text-muted">Pendientes</div>
+            <?= kpi_delta_badge($nowPack['pendientes'], $prevPack['pendientes'], 'good_down') ?>
+          </div>
+          <div class="display-6"><?= number_format($nowPack['pendientes']) ?></div>
+          <small class="text-muted">vs. <?= htmlspecialchars($prev_desde) ?>–<?= htmlspecialchars($prev_hasta) ?></small>
         </div>
-      </div>
+      </a>
     </div>
+
+    <!-- Vencidos -->
     <div class="col-md-3">
-      <div class="card border-0 shadow-sm">
+      <a class="card border-0 shadow-sm text-decoration-none text-dark kpi-card"
+         href="<?= BASE_URL ?>/hallazgos/listado.php?estado=vencido&desde=<?= urlencode($desde) ?>&hasta=<?= urlencode($hasta) ?>"
+         data-bs-toggle="tooltip" 
+         data-bs-placement="top"
+         title="⏰ Hallazgos con SLA vencido (> 2 días)<br>⬇️ <span class='text-success'>Bajar es bueno</span><br>Comparado con período anterior del mismo tamaño">
         <div class="card-body">
-          <div class="text-muted">Vencidos</div>
-          <div class="display-6 text-danger"><?= number_format($kpiVencidos) ?></div>
-          <small class="text-muted">SLA > 2 días</small>
+          <div class="d-flex justify-content-between">
+            <div class="text-muted">Vencidos</div>
+            <?= kpi_delta_badge($nowPack['vencidos'], $prevPack['vencidos'], 'good_down') ?>
+          </div>
+          <div class="display-6 text-danger"><?= number_format($nowPack['vencidos']) ?></div>
+          <small class="text-muted">SLA &gt; 2 días</small><br>
+          <small class="text-muted">vs. <?= htmlspecialchars($prev_desde) ?>–<?= htmlspecialchars($prev_hasta) ?></small>
         </div>
-      </div>
+      </a>
     </div>
+
+    <!-- Vencen hoy -->
     <div class="col-md-3">
-      <div class="card border-0 shadow-sm">
+      <a class="card border-0 shadow-sm text-decoration-none text-dark kpi-card"
+         href="<?= BASE_URL ?>/hallazgos/listado.php?estado=pendiente&desde=<?= urlencode(date('Y-m-d')) ?>&hasta=<?= urlencode(date('Y-m-d')) ?>"
+         data-bs-toggle="tooltip" 
+         data-bs-placement="top"
+         title="🚨 Hallazgos que vencen HOY<br>⚠️ <span class='text-warning'>Prioridad alta</span><br>Foto del día actual (no comparativo)">
         <div class="card-body">
           <div class="text-muted">Vencen hoy</div>
-          <div class="display-6 text-warning"><?= number_format($kpiVencenHoy) ?></div>
+          <div class="display-6 text-warning"><?= number_format($nowPack['vencen_hoy']) ?></div>
           <small class="text-muted">Prioridad alta</small>
         </div>
-      </div>
+      </a>
     </div>
+
+    <!-- Respondidos -->
     <div class="col-md-3">
-      <div class="card border-0 shadow-sm">
+      <a class="card border-0 shadow-sm text-decoration-none text-dark kpi-card"
+         href="<?= BASE_URL ?>/hallazgos/listado.php?estado=respondido_lider&desde=<?= urlencode($desde) ?>&hasta=<?= urlencode($hasta) ?>"
+         data-bs-toggle="tooltip" 
+         data-bs-placement="top"
+         title="✅ Hallazgos respondidos por líderes<br>⬆️ <span class='text-success'>Subir es bueno</span><br>Incluye respuestas de líderes y administradores">
         <div class="card-body">
-          <div class="text-muted">Respondidos</div>
-          <div class="display-6 text-success"><?= number_format($kpiRespLider + $kpiRespAdmin) ?></div>
-          <small class="text-muted">Líder + Admin</small>
+          <div class="d-flex justify-content-between">
+            <div class="text-muted">Respondidos</div>
+            <?= kpi_delta_badge($nowPack['respondidos'], $prevPack['respondidos'], 'good_up') ?>
+          </div>
+          <div class="display-6 text-success"><?= number_format($nowPack['respondidos']) ?></div>
+          <small class="text-muted">Líder + Admin — vs. <?= htmlspecialchars($prev_desde) ?>–<?= htmlspecialchars($prev_hasta) ?></small>
         </div>
-      </div>
+      </a>
     </div>
   </div>
 
-  <!-- Gráfica por día -->
+  <!-- Gráfica por día con comparativa -->
   <div class="card border-0 shadow-sm mt-4">
     <div class="card-body">
-      <h5 class="card-title mb-3">Evolución (por día)</h5>
+      <h5 class="card-title mb-3">
+        Evolución (por día) 
+        <span class="badge bg-light text-dark ms-2" data-bs-toggle="tooltip" 
+              title="Líneas sólidas: Período actual (<?= htmlspecialchars($desde) ?> - <?= htmlspecialchars($hasta) ?>)<br>Líneas punteadas: Período anterior (<?= htmlspecialchars($prev_desde) ?> - <?= htmlspecialchars($prev_hasta) ?>)">
+          <i class="bi bi-info-circle"></i>
+        </span>
+      </h5>
       <canvas id="chartEstados" height="110"></canvas>
     </div>
   </div>
@@ -329,31 +481,108 @@ include __DIR__ . '/../includes/header.php';
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script>
 document.addEventListener('DOMContentLoaded', () => {
-  // ===== Gráfica por día =====
+  // ===== Inicializar tooltips de Bootstrap =====
+  const tooltipTriggerList = document.querySelectorAll('[data-bs-toggle="tooltip"]');
+  const tooltipList = [...tooltipTriggerList].map(tooltipTriggerEl => new bootstrap.Tooltip(tooltipTriggerEl, {
+    html: true,
+    delay: {show: 300, hide: 100}
+  }));
+
+  // ===== B) Rangos rápidos =====
+  const d = document.querySelector('input[name="desde"]');
+  const h = document.querySelector('input[name="hasta"]');
+  const form = d?.closest('form');
+
+  function fmt(dt){ return dt.toISOString().slice(0,10); }
+
+  document.querySelectorAll('[data-range]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const r = btn.getAttribute('data-range');
+      const today = new Date();
+      let desde = null, hasta = null;
+
+      if (r==='hoy'){ desde=today; hasta=today; }
+      if (r==='7d'){ hasta=today; desde=new Date(today); desde.setDate(hasta.getDate()-6); }
+      if (r==='30d'){ hasta=today; desde=new Date(today); desde.setDate(hasta.getDate()-29); }
+      if (r==='mes'){
+        hasta=today;
+        desde=new Date(today.getFullYear(), today.getMonth(), 1);
+      }
+
+      if (desde && hasta && d && h && form){
+        d.value = fmt(desde);
+        h.value = fmt(hasta);
+        form.submit();
+      }
+    });
+  });
+
+  // ===== Gráfica con comparativa de períodos =====
+  const wrap = document.getElementById('chartEstados')?.closest('.card');
+  if (wrap) {
+    const sk = document.createElement('div');
+    sk.id = 'chart-skel';
+    sk.style.minHeight = '140px';
+    sk.className = 'placeholder-wave';
+    sk.innerHTML = '<div class="placeholder col-12" style="height:110px;"></div>';
+    wrap.querySelector('.card-body')?.prepend(sk);
+  }
+
+  const labels   = <?= json_encode($labelsPretty) ?>;
+
+  const curr = {
+    p:  <?= json_encode($currP)  ?>,
+    v:  <?= json_encode($currV)  ?>,
+    rl: <?= json_encode($currRL) ?>,
+    ra: <?= json_encode($currRA) ?>
+  };
+  const prev = {
+    p:  <?= json_encode($prevP)  ?>,
+    v:  <?= json_encode($prevV)  ?>,
+    rl: <?= json_encode($prevRL) ?>,
+    ra: <?= json_encode($prevRA) ?>
+  };
+
   const ctx = document.getElementById('chartEstados');
-  const data = <?= json_encode($serie ?: []) ?>;
 
-  const labels   = data.map(d => d.dia);
-  const pendientes = data.map(d => Number(d.p || 0));
-  const vencidos   = data.map(d => Number(d.v || 0));
-  const respLider  = data.map(d => Number(d.rl || 0));
-  const respAdmin  = data.map(d => Number(d.ra || 0));
-
-  new Chart(ctx, {
+  const chart = new Chart(ctx, {
     type: 'line',
-    data: { labels, datasets: [
-      { label: 'Pendientes', data: pendientes, tension: .3 },
-      { label: 'Vencidos',   data: vencidos,   tension: .3 },
-      { label: 'Resp. Líder',data: respLider,  tension: .3 },
-      { label: 'Resp. Admin',data: respAdmin,  tension: .3 },
-    ]},
+    data: {
+      labels,
+      datasets: [
+        // Actual
+        { label: 'Pendientes',       data: curr.p,  tension: .3 },
+        { label: 'Vencidos',         data: curr.v,  tension: .3 },
+        { label: 'Resp. Líder',      data: curr.rl, tension: .3 },
+        { label: 'Resp. Admin',      data: curr.ra, tension: .3 },
+
+        // Previo (línea punteada + opacidad baja)
+        { label: 'Pendientes (prev)', data: prev.p,  tension: .3, borderDash:[6,4], pointRadius:0, borderWidth:1 },
+        { label: 'Vencidos (prev)',   data: prev.v,  tension: .3, borderDash:[6,4], pointRadius:0, borderWidth:1 },
+        { label: 'Resp. Líder (prev)',data: prev.rl, tension: .3, borderDash:[6,4], pointRadius:0, borderWidth:1 },
+        { label: 'Resp. Admin (prev)',data: prev.ra, tension: .3, borderDash:[6,4], pointRadius:0, borderWidth:1 },
+      ]
+    },
     options: {
       responsive: true,
       interaction: { mode: 'index', intersect: false },
-      plugins: { legend: { position: 'bottom' } },
+      plugins: {
+        legend: { position: 'bottom' },
+        tooltip: {
+          callbacks: {
+            title: items => {
+              // mostrará el rango actual para el índice
+              return items[0]?.label || '';
+            }
+          }
+        }
+      },
       scales: { y: { beginAtZero: true, ticks: { precision: 0 } } }
     }
   });
+
+  // Oculta skeleton
+  document.getElementById('chart-skel')?.remove();
 
   // ===== Top Zonas → CC (toggle sin recargar) =====
   const tablaZ = document.getElementById('tabla-top-zonas');
@@ -618,3 +847,37 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 });
 </script>
+
+<style>
+.kpi-card {
+  transition: all 0.2s ease-in-out;
+  cursor: pointer;
+}
+
+.kpi-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0,0,0,0.15) !important;
+}
+
+/* Mejorar la legibilidad de los tooltips */
+.tooltip {
+  --bs-tooltip-bg: rgba(33, 37, 41, 0.95);
+}
+
+.tooltip .tooltip-inner {
+  text-align: left;
+  line-height: 1.4;
+  padding: 8px 12px;
+}
+
+/* Destacar el texto dentro de los tooltips */
+.tooltip .text-success {
+  color: #75b798 !important;
+  font-weight: 600;
+}
+
+.tooltip .text-warning {
+  color: #ffc107 !important;
+  font-weight: 600;
+}
+</style>

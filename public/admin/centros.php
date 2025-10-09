@@ -1,155 +1,324 @@
 <?php
-require_once __DIR__ . '/../../includes/session_boot.php';
-require_once __DIR__ . '/../../includes/env.php';
-require_once __DIR__ . '/../../includes/db.php';
-require_once __DIR__ . '/../../includes/auth.php';
+declare(strict_types=1);
 
-login_required();
-require_roles(['admin']);   // <-- solo admin
+$REQUIRED_MODULE = 'auditoria';
+$REQUIRED_PERMS  = ['auditoria.access'];
+
+require_once __DIR__ . '/../../includes/page_boot.php';
+require_roles(['admin']); // solo admin
 
 $pdo = getDB();
 
-// Catálogo de zonas para filtro y formulario
-$zonas = $pdo->query("SELECT id, nombre FROM zona WHERE activo=1 ORDER BY nombre")->fetchAll();
+/* ========================
+   Catálogo de Zonas (para el select)
+   ======================== */
+$zonas = $pdo->query("SELECT id, nombre FROM zona WHERE activo=1 ORDER BY nombre")->fetchAll(PDO::FETCH_ASSOC);
 
-// Filtros
-$q = trim($_GET['q'] ?? '');
-$zona_id = (int)($_GET['zona_id'] ?? 0);
+/* ========================
+   Acciones POST
+   ======================== */
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+  $act = $_POST['act'] ?? '';
 
-$allowedPer = [10,25,50,100];
-$per_page = (int)($_GET['per_page'] ?? 10);
-if (!in_array($per_page, $allowedPer, true)) $per_page = 10;
+  // Crear / Editar
+  if ($act === 'save') {
+    $id      = (int)($_POST['id'] ?? 0);
+    $nombre  = trim($_POST['nombre'] ?? '');
+    $zona_id = (int)($_POST['zona_id'] ?? 0);
+    $cp      = trim($_POST['codigo_postal'] ?? '');
+    $activo  = isset($_POST['activo']) ? 1 : 0;
 
-$page = max(1, (int)($_GET['page'] ?? 1));
-$offset = ($page - 1) * $per_page;
+    if ($nombre === '' || $zona_id <= 0) {
+      set_flash('danger', 'Nombre y zona son obligatorios.');
+      header('Location: ' . BASE_URL . '/admin/centros.php'); exit;
+    }
 
-$where = []; $params = [];
-if ($q !== '')        { $where[] = "c.nombre LIKE ?"; $params[] = "%$q%"; }
-if ($zona_id > 0)     { $where[] = "c.zona_id = ?";   $params[] = $zona_id; }
-$where_sql = $where ? ('WHERE '.implode(' AND ', $where)) : '';
+    try {
+      if ($id > 0) {
+        $up = $pdo->prepare("UPDATE centro_costo SET nombre=?, zona_id=?, codigo_postal=?, activo=? WHERE id=?");
+        $up->execute([$nombre, $zona_id, $cp, $activo, $id]);
+        set_flash('success', 'Centro de costo actualizado.');
+      } else {
+        $ins = $pdo->prepare("INSERT INTO centro_costo (nombre, zona_id, codigo_postal, activo) VALUES (?,?,?,?)");
+        $ins->execute([$nombre, $zona_id, $cp, $activo]);
+        set_flash('success', 'Centro de costo creado.');
+      }
+    } catch (Throwable $e) {
+      set_flash('danger', 'Error: ' . htmlspecialchars($e->getMessage()));
+    }
+    header('Location: ' . BASE_URL . '/admin/centros.php'); exit;
+  }
 
-// Total
-$sqlCount = "SELECT COUNT(*)
-             FROM centro_costo c
-             JOIN zona z ON z.id=c.zona_id
-             $where_sql";
-$stc = $pdo->prepare($sqlCount);
+  // Activar / Desactivar
+  if ($act === 'toggle') {
+    $id = (int)($_POST['id'] ?? 0);
+    if ($id > 0) {
+      $pdo->prepare("UPDATE centro_costo SET activo = IF(activo=1,0,1) WHERE id=?")->execute([$id]);
+      set_flash('success', 'Estado actualizado.');
+    }
+    header('Location: ' . BASE_URL . '/admin/centros.php'); exit;
+  }
+}
+
+/* ========================
+   Filtros + Paginación
+   ======================== */
+$q        = trim($_GET['q'] ?? '');
+$f_zona   = (int)($_GET['zona_id'] ?? 0);
+
+$perPage  = (int)($_GET['per_page'] ?? 10);
+$allowed  = [10,25,50,75,100];
+if (!in_array($perPage, $allowed, true)) $perPage = 10;
+
+$page     = max(1, (int)($_GET['page'] ?? 1));
+$offset   = ($page - 1) * $perPage;
+
+$where  = [];
+$params = [];
+
+if ($q !== '') {
+  $where[] = "(c.nombre LIKE ? OR c.codigo_postal LIKE ?)";
+  $like = '%' . str_replace(['%','_'], ['\\%','\\_'], $q) . '%';
+  $params[] = $like; $params[] = $like;
+}
+if ($f_zona > 0) {
+  $where[] = "c.zona_id = ?";
+  $params[] = $f_zona;
+}
+
+$whereSQL = $where ? ('WHERE ' . implode(' AND ', $where)) : '';
+
+/* Conteo total */
+$stc = $pdo->prepare("SELECT COUNT(*) FROM centro_costo c $whereSQL");
 $stc->execute($params);
 $total = (int)$stc->fetchColumn();
-$total_pages = max(1, (int)ceil($total / $per_page));
+$total_pages = max(1, (int)ceil($total / $perPage));
 
-// Datos
-$sql = "SELECT c.id, c.nombre, c.activo, z.nombre AS zona
+/* Datos paginados (JOIN solo para mostrar nombre de zona) */
+$sql = "SELECT c.id, c.nombre, c.codigo_postal, c.zona_id, c.activo, z.nombre AS zona
         FROM centro_costo c
-        JOIN zona z ON z.id=c.zona_id
-        $where_sql
-        ORDER BY z.nombre, c.nombre
+        LEFT JOIN zona z ON z.id = c.zona_id
+        $whereSQL
+        ORDER BY z.nombre ASC, c.nombre ASC
         LIMIT ? OFFSET ?";
-$paramsData = $params;
-$paramsData[] = $per_page;
-$paramsData[] = $offset;
+$params2 = array_merge($params, [$perPage, $offset]);
 
 $st = $pdo->prepare($sql);
-$st->execute($paramsData);
-$rows = $st->fetchAll();
+$st->execute($params2);
+$rows = $st->fetchAll(PDO::FETCH_ASSOC);
 
-function build_url($page, $per_page) {
-  $qs = $_GET; $qs['page'] = $page; $qs['per_page'] = $per_page;
+/* Helper URL */
+function build_url(array $overrides = []): string {
+  $qs = array_merge($_GET, $overrides);
   return BASE_URL . '/admin/centros.php?' . http_build_query($qs);
 }
 
 include __DIR__ . '/../../includes/header.php';
 ?>
-<div class="container">
+<div class="container py-3">
   <div class="d-flex justify-content-between align-items-center mb-3">
-    <h3>Centros de Costo (CC)</h3>
-    <a class="btn btn-primary" href="<?= BASE_URL ?>/admin/centro_edit.php">+ Nuevo CC</a>
+    <h1 class="h4 mb-0">Centros de Costo</h1>
+    <button class="btn btn-success"
+            data-bs-toggle="modal"
+            data-bs-target="#modalForm"
+            data-id="0"
+            data-nombre=""
+            data-zona_id="0"
+            data-cp=""
+            data-activo="1">
+      + Nuevo centro
+    </button>
   </div>
 
-  <form class="row g-2 mb-3" method="get">
-    <div class="col-md-4">
-      <input class="form-control" name="q" placeholder="Buscar por nombre de CC..." value="<?= htmlspecialchars($q) ?>">
+  <!-- Filtros -->
+  <form class="row g-2 align-items-end mb-3" method="get">
+    <div class="col-md-5">
+      <label class="form-label small fw-semibold">Buscar</label>
+      <input class="form-control" name="q" value="<?= htmlspecialchars($q) ?>" placeholder="Nombre o código postal">
     </div>
     <div class="col-md-4">
+      <label class="form-label small fw-semibold">Zona</label>
       <select name="zona_id" class="form-select">
-        <option value="0">Todas las zonas</option>
-        <?php foreach($zonas as $z): ?>
-          <option value="<?= $z['id'] ?>" <?= ($zona_id===$z['id'])?'selected':'' ?>>
+        <option value="0">Todas</option>
+        <?php foreach ($zonas as $z): ?>
+          <option value="<?= (int)$z['id'] ?>" <?= $f_zona===(int)$z['id']?'selected':'' ?>>
             <?= htmlspecialchars($z['nombre']) ?>
           </option>
         <?php endforeach; ?>
       </select>
     </div>
-    <div class="col-md-4 d-flex gap-2 align-items-center">
-      <div class="d-flex align-items-center gap-2">
-        <label class="form-label mb-0">Mostrar</label>
-        <select name="per_page" class="form-select" style="width:auto">
-          <?php foreach([10,25,50,100] as $op): ?>
-            <option value="<?= $op ?>" <?= ($per_page===$op)?'selected':'' ?>><?= $op ?></option>
-          <?php endforeach; ?>
-        </select>
-        <span>registros</span>
-      </div>
+    <div class="col-md-2">
+      <label class="form-label small fw-semibold">Registros por pág.</label>
+      <select name="per_page" class="form-select">
+        <?php foreach($allowed as $op): ?>
+          <option value="<?= $op ?>" <?= ($perPage===$op)?'selected':'' ?>><?= $op ?></option>
+        <?php endforeach; ?>
+      </select>
+    </div>
+    <div class="col-md-1 d-grid">
       <button class="btn btn-primary">Aplicar</button>
-      <a class="btn btn-secondary" href="<?= BASE_URL ?>/admin/centros.php">Limpiar</a>
     </div>
   </form>
 
+  <div class="mb-2 text-muted small">
+    Mostrando <?= $total ? ($offset + 1) : 0 ?>–<?= min($offset + $perPage, $total) ?> de <?= $total ?> resultados
+  </div>
+
   <div class="table-responsive">
-    <table class="table table-sm table-striped align-middle">
-      <thead class="table-dark">
+    <table class="table table-sm table-hover align-middle">
+      <thead class="table-light">
         <tr>
-          <th>#</th>
-          <th>CC</th>
+          <th style="width:70px">#</th>
           <th>Zona</th>
-          <th>Estado</th>
-          <th style="width:260px">Acciones</th>
+          <th>Centro de Costo</th>
+          <th>Código Postal</th>
+          <th>Activo</th>
+          <th style="width:220px" class="text-end">Acciones</th>
         </tr>
       </thead>
       <tbody>
-      <?php if (!$rows): ?>
-        <tr><td colspan="5" class="text-center py-4">Sin resultados</td></tr>
-      <?php else: ?>
-        <?php foreach($rows as $r): ?>
+        <?php if (!$rows): ?>
+          <tr><td colspan="6" class="text-center text-muted py-3">Sin resultados.</td></tr>
+        <?php else: foreach ($rows as $i => $r): ?>
           <tr>
-            <td><?= (int)$r['id'] ?></td>
-            <td><?= htmlspecialchars($r['nombre']) ?></td>
-            <td><?= htmlspecialchars($r['zona']) ?></td>
-            <td><?= ((int)$r['activo']===1) ? '<span class="badge bg-success">Activo</span>' : '<span class="badge bg-danger">Inactivo</span>' ?></td>
-            <td class="d-flex flex-wrap gap-2">
-              <a class="btn btn-sm btn-outline-secondary" href="<?= BASE_URL ?>/admin/centro_edit.php?id=<?= (int)$r['id'] ?>">Editar</a>
-              <?php if ((int)$r['activo']===1): ?>
-                <a class="btn btn-sm btn-outline-danger"
-                   href="<?= BASE_URL ?>/admin/centro_toggle.php?id=<?= (int)$r['id'] ?>&to=0"
-                   data-confirm="¿Inactivar este CC? Esto puede afectar asignaciones vigentes."
-                   data-confirm-type="warning" data-confirm-ok="Sí, inactivar">
-                  Inactivar
-                </a>
-              <?php else: ?>
-                <a class="btn btn-sm btn-outline-success"
-                   href="<?= BASE_URL ?>/admin/centro_toggle.php?id=<?= (int)$r['id'] ?>&to=1"
-                   data-confirm="¿Activar este CC?"
-                   data-confirm-type="info" data-confirm-ok="Sí, activar">
-                  Activar
-                </a>
-              <?php endif; ?>
+            <td><?= $offset + $i + 1 ?></td>
+            <td><?= htmlspecialchars($r['zona'] ?? '') ?></td>
+            <td><?= htmlspecialchars($r['nombre'] ?? '') ?></td>
+            <td><code><?= htmlspecialchars($r['codigo_postal'] ?? '') ?></code></td>
+            <td><?= ((int)$r['activo']===1) ? '<span class="badge bg-success">Sí</span>' : '<span class="badge bg-danger">No</span>' ?></td>
+            <td class="text-end">
+              <div class="btn-group btn-group-sm">
+                <button class="btn btn-outline-primary"
+                        data-bs-toggle="modal"
+                        data-bs-target="#modalForm"
+                        data-id="<?= (int)$r['id'] ?>"
+                        data-nombre="<?= htmlspecialchars($r['nombre'] ?? '') ?>"
+                        data-zona_id="<?= (int)($r['zona_id'] ?? 0) ?>"
+                        data-cp="<?= htmlspecialchars($r['codigo_postal'] ?? '') ?>"
+                        data-activo="<?= (int)$r['activo'] ?>">
+                  Editar
+                </button>
+
+                <form method="post" class="d-inline">
+                  <input type="hidden" name="act" value="toggle">
+                  <input type="hidden" name="id" value="<?= (int)$r['id'] ?>">
+                  <button
+                    class="btn btn-sm btn-outline-warning"
+                    data-confirm="¿Cambiar estado de este centro?"
+                    data-confirm-type="warning"
+                    data-confirm-ok="Sí, cambiar">
+                    Activar/Desactivar
+                  </button>
+                </form>
+
+              </div>
             </td>
           </tr>
-        <?php endforeach; ?>
-      <?php endif; ?>
+        <?php endforeach; endif; ?>
       </tbody>
     </table>
   </div>
 
-  <?php if ($total_pages > 1): ?>
-    <nav aria-label="Paginación">
-      <ul class="pagination">
-        <li class="page-item <?= ($page<=1)?'disabled':'' ?>"><a class="page-link" href="<?= build_url(1,$per_page) ?>">« Primero</a></li>
-        <li class="page-item <?= ($page<=1)?'disabled':'' ?>"><a class="page-link" href="<?= build_url(max(1,$page-1),$per_page) ?>">‹ Anterior</a></li>
-        <li class="page-item disabled"><span class="page-link">Página <?= $page ?> de <?= $total_pages ?> (<?= $total ?>)</span></li>
-        <li class="page-item <?= ($page>=$total_pages)?'disabled':'' ?>"><a class="page-link" href="<?= build_url(min($total_pages,$page+1),$per_page) ?>">Siguiente ›</a></li>
-        <li class="page-item <?= ($page>=$total_pages)?'disabled':'' ?>"><a class="page-link" href="<?= build_url($total_pages,$per_page) ?>">Último »</a></li>
-      </ul>
-    </nav>
-  <?php endif; ?>
+  <!-- Paginación -->
+  <div class="d-flex justify-content-between align-items-center mt-2">
+    <div class="small text-muted">Página <?= $page ?> de <?= $total_pages ?></div>
+    <div class="d-flex gap-2">
+      <?php if ($page > 1): ?>
+        <a class="btn btn-outline-primary btn-sm" href="<?= build_url(['page'=>1]) ?>"><i class="bi bi-skip-backward-fill"></i> Primero</a>
+        <a class="btn btn-outline-primary btn-sm" href="<?= build_url(['page'=>$page-1]) ?>"><i class="bi bi-caret-left-fill"></i> Anterior</a>
+      <?php else: ?>
+        <button class="btn btn-outline-secondary btn-sm" disabled><i class="bi bi-skip-backward-fill"></i> Primero</button>
+        <button class="btn btn-outline-secondary btn-sm" disabled><i class="bi bi-caret-left-fill"></i> Anterior</button>
+      <?php endif; ?>
+
+      <?php if ($page < $total_pages): ?>
+        <a class="btn btn-outline-primary btn-sm" href="<?= build_url(['page'=>$page+1]) ?>">Siguiente <i class="bi bi-caret-right-fill"></i></a>
+        <a class="btn btn-outline-primary btn-sm" href="<?= build_url(['page'=>$total_pages]) ?>">Último <i class="bi bi-skip-forward-fill"></i></a>
+      <?php else: ?>
+        <button class="btn btn-outline-secondary btn-sm" disabled>Siguiente <i class="bi bi-caret-right-fill"></i></button>
+        <button class="btn btn-outline-secondary btn-sm" disabled>Último <i class="bi bi-skip-forward-fill"></i></button>
+      <?php endif; ?>
+    </div>
+  </div>
 </div>
+
+<!-- Modal Crear/Editar -->
+<div class="modal fade" id="modalForm" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <form class="modal-content" method="post">
+      <input type="hidden" name="act" value="save">
+      <input type="hidden" name="id" id="f_id" value="0">
+      <div class="modal-header">
+        <h5 class="modal-title" id="modalTitle">Nuevo centro</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-2">
+          <label class="form-label">Nombre *</label>
+          <input class="form-control" name="nombre" id="f_nombre" required>
+        </div>
+        <div class="mb-2">
+          <label class="form-label">Zona *</label>
+          <select class="form-select" name="zona_id" id="f_zona" required>
+            <option value="0">Seleccione...</option>
+            <?php foreach($zonas as $z): ?>
+              <option value="<?= (int)$z['id'] ?>"><?= htmlspecialchars($z['nombre']) ?></option>
+            <?php endforeach; ?>
+          </select>
+        </div>
+        <div class="mb-2">
+          <label class="form-label">Código Postal</label>
+          <input class="form-control" name="codigo_postal" id="f_cp" placeholder="(opcional)">
+        </div>
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" id="f_activo" name="activo" checked>
+          <label class="form-check-label" for="f_activo">Activo</label>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-primary">Guardar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+/* Rellena modal (crear/editar) */
+document.getElementById('modalForm')?.addEventListener('show.bs.modal', (ev) => {
+  const btn = ev.relatedTarget;
+  const id      = btn?.getAttribute('data-id') ?? '0';
+  const nombre  = btn?.getAttribute('data-nombre') ?? '';
+  const zona_id = btn?.getAttribute('data-zona_id') ?? '0';
+  const cp      = btn?.getAttribute('data-cp') ?? '';
+  const activo  = (btn?.getAttribute('data-activo') ?? '1') === '1';
+
+  document.getElementById('modalTitle').textContent = (id === '0') ? 'Nuevo centro' : 'Editar centro';
+  document.getElementById('f_id').value = id;
+  document.getElementById('f_nombre').value = nombre;
+  document.getElementById('f_zona').value = zona_id;
+  document.getElementById('f_cp').value = cp;
+  document.getElementById('f_activo').checked = activo;
+});
+
+/* Botones con confirm reutilizando el modal genérico del header */
+document.querySelectorAll('[data-submit-form]')?.forEach(btn => {
+  btn.addEventListener('click', (ev) => {
+    ev.preventDefault();
+    const form = btn.closest('form');
+    const msg  = btn.getAttribute('data-confirm') || '¿Confirmar acción?';
+    const typ  = btn.getAttribute('data-confirm-type') || 'question';
+    const ok   = btn.getAttribute('data-confirm-ok') || 'Aceptar';
+
+    if (window.showConfirm) {
+      // si tienes helper en alerts.js (SweetAlert2)
+      window.showConfirm(msg, typ, ok).then(yes => { if (yes) form.submit(); });
+    } else {
+      if (confirm(msg)) form.submit();
+    }
+  });
+});
+</script>
+
+<?php
+$__footer = __DIR__ . '/../../includes/footer.php';
+if (is_file($__footer)) include $__footer;

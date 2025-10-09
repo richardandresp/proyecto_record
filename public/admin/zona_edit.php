@@ -1,76 +1,79 @@
 <?php
-require_once __DIR__ . '/../../includes/session_boot.php';
-require_once __DIR__ . '/../../includes/env.php';
-require_once __DIR__ . '/../../includes/db.php';
-require_once __DIR__ . '/../../includes/auth.php';
+declare(strict_types=1);
 
-login_required();
-require_roles(['admin']);   // <-- solo admin
+/**
+ * Editar Zona
+ * Requiere módulo Auditoría y rol admin
+ */
+$REQUIRED_MODULE = 'auditoria';
+$REQUIRED_PERMS  = ['auditoria.access'];
+
+require_once __DIR__ . '/../../includes/page_boot.php'; // carga flash.php, etc.
+require_roles(['admin']);                               // sólo admin
 
 $pdo = getDB();
 
+// --- obtener ID ---
 $id = (int)($_GET['id'] ?? 0);
-$isNew = ($id === 0);
+if ($id <= 0) { http_response_code(400); exit('ID inválido'); }
 
-if (!$isNew) {
-  $st = $pdo->prepare("SELECT id,nombre,activo FROM zona WHERE id=? LIMIT 1");
-  $st->execute([$id]);
-  $z = $st->fetch();
-  if (!$z) { http_response_code(404); exit('Zona no encontrada'); }
-} else {
-  $z = ['id'=>0,'nombre'=>'','activo'=>1];
-}
+// --- cargar zona ---
+$st = $pdo->prepare("SELECT id, nombre, activo FROM zona WHERE id=? LIMIT 1");
+$st->execute([$id]);
+$zona = $st->fetch(PDO::FETCH_ASSOC);
+if (!$zona) { http_response_code(404); exit('Zona no encontrada'); }
 
 $err = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   $nombre = trim($_POST['nombre'] ?? '');
-  $activo = (int)($_POST['activo'] ?? 1);
+  $activo = isset($_POST['activo']) ? 1 : 0;
 
   if ($nombre === '') {
     $err = 'El nombre es obligatorio.';
   } else {
-    // nombre único
-    $chk = $pdo->prepare("SELECT 1 FROM zona WHERE nombre=? AND id<>? LIMIT 1");
-    $chk->execute([$nombre, $z['id']]);
-    if ($chk->fetch()) $err = 'Ya existe una zona con ese nombre.';
+    try {
+      $up = $pdo->prepare("UPDATE zona SET nombre=?, activo=? WHERE id=?");
+      $up->execute([$nombre, $activo, $zona['id']]);
+
+      set_flash('success', 'Zona actualizada correctamente.');
+      header('Location: ' . BASE_URL . '/admin/zonas.php');
+      exit;
+    } catch (Throwable $e) {
+      $err = 'Error al actualizar: ' . htmlspecialchars($e->getMessage());
+    }
   }
 
-  if (!$err) {
-    if ($isNew) {
-      $ins = $pdo->prepare("INSERT INTO zona (nombre, activo) VALUES (?, ?)");
-      $ins->execute([$nombre, $activo]);
-      set_flash('success', 'Zona creada correctamente.');
-    } else {
-      $up = $pdo->prepare("UPDATE zona SET nombre=?, activo=? WHERE id=?");
-      $up->execute([$nombre, $activo, $z['id']]);
-      set_flash('success', 'Zona actualizada correctamente.');
-    }
-    header('Location: ' . BASE_URL . '/admin/zonas.php');
-    exit;
-  }
+  // refrescar datos visibles si hubo error y no redirigimos
+  $zona['nombre'] = $nombre;
+  $zona['activo'] = $activo;
 }
 
 include __DIR__ . '/../../includes/header.php';
 ?>
 <div class="container">
-  <h3><?= $isNew ? 'Nueva zona' : 'Editar zona' ?></h3>
-  <?php if ($err): ?><div class="alert alert-danger"><?= $err ?></div><?php endif; ?>
+  <h3>Editar zona</h3>
+
+  <?php if ($err): ?>
+    <div class="alert alert-danger alert-dismissible fade show" role="alert">
+      <?= $err ?>
+      <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Cerrar"></button>
+    </div>
+  <?php endif; ?>
 
   <form method="post" class="row g-3">
     <div class="col-md-6">
       <label class="form-label">Nombre *</label>
-      <input name="nombre" class="form-control" required value="<?= htmlspecialchars($_POST['nombre'] ?? $z['nombre']) ?>">
+      <input name="nombre" class="form-control" required value="<?= htmlspecialchars($zona['nombre']) ?>">
     </div>
-    <div class="col-md-3">
-      <label class="form-label">Estado</label>
-      <select name="activo" class="form-select">
-        <option value="1" <?= ((int)($z['activo'])===1)?'selected':'' ?>>Activa</option>
-        <option value="0" <?= ((int)($z['activo'])===0)?'selected':'' ?>>Inactiva</option>
-      </select>
+    <div class="col-md-3 d-flex align-items-end">
+      <div class="form-check">
+        <input class="form-check-input" type="checkbox" name="activo" id="chkActivo" <?= ((int)$zona['activo']===1)?'checked':'' ?>>
+        <label class="form-check-label" for="chkActivo">Activo</label>
+      </div>
     </div>
-    <div class="col-12 d-flex gap-2">
-      <button class="btn btn-primary"><?= $isNew ? 'Crear' : 'Guardar' ?></button>
-      <a class="btn btn-secondary" href="<?= BASE_URL ?>/admin/zonas.php">Volver</a>
+    <div class="col-12">
+      <button class="btn btn-primary">Guardar cambios</button>
+      <a href="<?= BASE_URL ?>/admin/zonas.php" class="btn btn-secondary">Volver</a>
     </div>
   </form>
 </div>

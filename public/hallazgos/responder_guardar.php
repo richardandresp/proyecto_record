@@ -1,35 +1,17 @@
 <?php
 declare(strict_types=1);
 
-// Requisitos para esta página:
+// Requisitos para esta página
 $REQUIRED_MODULE = 'auditoria';
 $REQUIRED_PERMS  = ['auditoria.access','auditoria.hallazgo.reply'];
 
-
-// Boot común
+// Boot común (session/env/db/auth/acl/flash/BASE_URL)
 require_once __DIR__ . '/../../includes/page_boot.php';
-
-// Shim de flash si el proyecto no lo tiene cargado
-if (!function_exists('set_flash')) {
-  function set_flash(string $type, string $msg): void {
-    if (!isset($_SESSION)) session_start();
-    $_SESSION['__flash'][] = ['type'=>$type, 'msg'=>$msg, 'ts'=>time()];
-  }
-}
-if (!function_exists('consume_flash')) {
-  function consume_flash(): array {
-    if (!isset($_SESSION)) session_start();
-    $f = $_SESSION['__flash'] ?? [];
-    unset($_SESSION['__flash']);
-    return $f;
-  }
-}
-
-
-// (desde aquí continúa tu código actual de listado… ya tienes $pdo, $uid, $rol)
+require_once __DIR__ . '/../../includes/notify.php';
 
 $pdo = getDB();
-
+$uid = (int)($_SESSION['usuario_id'] ?? 0);
+$rol = $_SESSION['rol'] ?? 'lectura';
 
 // ---------- helpers ----------
 $logTrace = __DIR__ . '/var_responder_trace.log';
@@ -54,7 +36,6 @@ $tableExists = function(PDO $pdo, string $table): bool {
   } catch (\Throwable $e) { return false; }
 };
 
-// Función para limpiar texto sin convertir a mayúsculas
 $cleanText = function(?string $s): string {
   $s = (string)$s;
   $s = preg_replace("/[ \t]+/u", " ", $s);
@@ -64,9 +45,7 @@ $cleanText = function(?string $s): string {
 // UPLOADS_PATH fallback si no está definido
 if (!defined('UPLOADS_PATH')) {
   $fallback = realpath(__DIR__ . '/../../public/uploads');
-  if ($fallback === false) {
-    $fallback = __DIR__ . '/../../public/uploads';
-  }
+  if ($fallback === false) $fallback = __DIR__ . '/../../public/uploads';
   define('UPLOADS_PATH', $fallback);
 }
 
@@ -95,6 +74,7 @@ $st = $pdo->prepare("
   JOIN zona z ON z.id=h.zona_id
   JOIN centro_costo c ON c.id=h.centro_id
   WHERE h.id=?
+  LIMIT 1
 ");
 $st->execute([$hid]);
 $h = $st->fetch(PDO::FETCH_ASSOC);
@@ -103,7 +83,7 @@ if (!$h) {
   header('Location: '.BASE_URL.'/hallazgos/listado.php'); exit;
 }
 
-// Vigencia líder
+// Guard de vigencia para líderes
 if ($rol === 'lider') {
   $chk = $pdo->prepare("
     SELECT 1
@@ -122,7 +102,6 @@ if ($rol === 'lider') {
 // ---------- archivos (múltiples) ----------
 $files = [];
 if (!empty($_FILES['adjuntos']) && is_array($_FILES['adjuntos']['name'])) {
-  // Normaliza estructura plana
   $names = $_FILES['adjuntos']['name'];
   $types = $_FILES['adjuntos']['type'];
   $tmpns = $_FILES['adjuntos']['tmp_name'];
@@ -145,7 +124,6 @@ try {
   $pdo->beginTransaction();
 
   $tieneCreadoEn = $hasColumn($pdo, 'hallazgo_respuesta', 'creado_en');
-
   $rol_resp = ($rol === 'admin') ? 'admin' : $rol;
 
   // Inserta respuesta
@@ -168,8 +146,8 @@ try {
   // Manejo de adjuntos múltiples
   $savedUrls = [];
   if ($files) {
-    $allowed = ['image/jpeg','image/png','application/pdf'];
-    $extOK   = ['jpg','jpeg','png','pdf'];
+    $allowed = ['image/jpeg','image/png','application/pdf','image/webp'];
+    $extOK   = ['jpg','jpeg','png','pdf','webp'];
     $destDir = rtrim(UPLOADS_PATH, '/\\') . "/hallazgos/{$hid}/respuestas/{$rid}";
     if (!is_dir($destDir)) { @mkdir($destDir, 0775, true); }
 
@@ -208,7 +186,6 @@ try {
           VALUES (?, ?, ?, ?, ?, NOW())
         ");
         foreach ($savedUrls as $idx => $url) {
-          // Recupera metadata simple del array original (nombre/mime/size)
           $f = $files[$idx] ?? null;
           $insA->execute([
             $rid,
@@ -246,13 +223,25 @@ try {
   exit;
 }
 
-// ---------- notificaciones (no bloqueante) ----------
+/* ---------- Notificación (post-commit; una sola vez) ---------- */
 try {
-  $h['estado'] = $nuevo_estado;
-  $titulo = 'Respuesta en hallazgo #'.$hid.(($h['pdv_codigo']??'')!=='' ? ' — Cód.PDV '.$h['pdv_codigo'] : '');
-  $cuerpo = 'Estado: '.$nuevo_estado;
-  // Notifica a responsables (líder/supervisor/auxiliar) y también a admin/auditor si tu notify lo soporta:
-  notify_hallazgo_to_responsables($h, 'H_RESPUESTA', $titulo, $cuerpo);
+  // Recargar hallazgo actualizado (incluye nombres para el cuerpo)
+  $stN = $pdo->prepare("
+    SELECT h.*,
+           z.nombre AS zona_nombre,
+           c.nombre AS centro_nombre
+    FROM hallazgo h
+    JOIN zona z ON z.id=h.zona_id
+    JOIN centro_costo c ON c.id=h.centro_id
+    WHERE h.id=? LIMIT 1
+  ");
+  $stN->execute([$hid]);
+  $hFull = $stN->fetch(PDO::FETCH_ASSOC) ?: ['id'=>$hid];
+  $hFull['estado'] = $nuevo_estado;
+
+  // Envía a creador + admins/auditores + responsables (lo maneja notify_hallazgo_respondido)
+  notify_hallazgo_respondido($hFull);
+
 } catch (\Throwable $e) {
   @file_put_contents($logErr,'['.date('c').'] NOTIFY: '.$e->getMessage().PHP_EOL, FILE_APPEND);
 }

@@ -1,6 +1,14 @@
 <?php
-// public/admin/permisos.php
 declare(strict_types=1);
+
+$REQUIRED_MODULE = 'auditoria';
+$REQUIRED_PERMS  = ['auditoria.access']; // agrega aquí otros permisos finos si los usas
+
+require_once __DIR__ . '/../../includes/page_boot.php'; // session/env/db/auth/acl/acl_suite/flash
+require_roles(['admin']); // todas estas pantallas son solo admin
+
+$pdo = getDB();
+
 
 require_once __DIR__ . '/../../includes/session_boot.php';
 require_once __DIR__ . '/../../includes/env.php';

@@ -2,6 +2,15 @@
 declare(strict_types=1);
 
 $REQUIRED_MODULE = 'auditoria';
+$REQUIRED_PERMS  = ['auditoria.access']; // agrega aquí otros permisos finos si los usas
+
+require_once __DIR__ . '/../../includes/page_boot.php'; // session/env/db/auth/acl/acl_suite/flash
+require_roles(['admin']); // todas estas pantallas son solo admin
+
+$pdo = getDB();
+
+
+$REQUIRED_MODULE = 'auditoria';
 $REQUIRED_PERMS  = ['auditoria.access']; // añade aquí un permiso fino si lo tienes p.ej. 'auditoria.admin.users'
 
 require_once __DIR__ . '/../../includes/page_boot.php'; // ya expone $pdo, $uid, $rol, BASE_URL y set_flash()/consume_flash()

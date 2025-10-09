@@ -1,12 +1,33 @@
 <?php
-// includes/notify.php
+// header.php - Rutas corregidas
+$rootDir = dirname(__DIR__); // Sube un nivel desde includes/
+
+require_once $rootDir . '/includes/session_boot.php';
+require_once $rootDir . '/includes/env.php';
+require_once $rootDir . '/includes/acl.php';
+require_once $rootDir . '/includes/flash.php';
+require_once $rootDir . '/includes/notify.php'; // <-- AÑADIDO
+
+$rol            = $_SESSION['rol']    ?? 'lectura';
+$nombreUsuario  = $_SESSION['nombre'] ?? '';
+$uid            = (int)($_SESSION['usuario_id'] ?? 0);
+
+// Conteo inicial para renderizar el badge desde el servidor
+$__initialUnread = 0;
+if ($uid > 0) {
+  try { $__initialUnread = notif_unread_count($uid); } catch (Throwable $e) { $__initialUnread = 0; }
+}
+
+require_once __DIR__ . '/env.php';
+require_once __DIR__ . '/db.php';
 
 if (!function_exists('get_pdo')) {
-  require_once __DIR__ . '/db.php';
+  function get_pdo(): PDO { return getDB(); }
 }
 
 /**
  * Crea una notificación (con deduplicación por usuario+ref_type+ref_id+codigo).
+ * Requiere un índice único en notificacion(usuario_id,ref_type,ref_id,codigo).
  */
 function notify_create(
   int $usuario_id,
@@ -17,6 +38,7 @@ function notify_create(
   ?int $ref_id = null,
   ?string $codigo = null
 ): bool {
+  if ($usuario_id <= 0) return false;
   $pdo = get_pdo();
 
   $sql = "INSERT IGNORE INTO notificacion
@@ -34,9 +56,7 @@ function notify_create(
   ]);
 }
 
-/**
- * Notifica a una lista de usuarios.
- */
+/** Notifica a una lista de usuarios. */
 function notify_many(
   array $userIds,
   string $titulo,
@@ -55,8 +75,7 @@ function notify_many(
 }
 
 /**
- * Calcula destinatarios para un hallazgo (instantáneo, usando snapshot si existe).
- * - líder, supervisor, auxiliar (de snapshot); si no hay snapshot, busca por vigencia (fecha del hallazgo).
+ * Calcula destinatarios para un hallazgo (snapshot si existe; si no, vigencia por fecha).
  */
 function hallazgo_responsables(int $hallazgo_id): array {
   $pdo = get_pdo();
@@ -106,9 +125,7 @@ function hallazgo_responsables(int $hallazgo_id): array {
   return array_values(array_unique(array_filter(array_map('intval', $uids))));
 }
 
-/**
- * Construye TÍTULO y CUERPO para "Nuevo hallazgo", incluyendo código de PDV.
- */
+/** Título y cuerpo “Nuevo hallazgo” con código PDV. */
 function build_hallazgo_nuevo_title_body(array $h): array {
   $id   = (int)($h['id'] ?? 0);
   $cod  = trim((string)($h['pdv_codigo'] ?? ''));
@@ -117,9 +134,7 @@ function build_hallazgo_nuevo_title_body(array $h): array {
   $cc   = trim((string)($h['centro_nombre'] ?? ''));
 
   $title = 'Nuevo Hallazgo #' . $id;
-  if ($cod !== '') {
-    $title .= ' — ' . $cod; // código en el título
-  }
+  if ($cod !== '') $title .= ' — ' . $cod;
 
   $body = [];
   if ($cod !== '' || $pdv !== '') {
@@ -131,31 +146,49 @@ function build_hallazgo_nuevo_title_body(array $h): array {
   return [$title, implode(' | ', $body)];
 }
 
-/**
- * Notifica “nuevo hallazgo” a responsables (y opcionalmente admins/auditores).
- */
+/** Notifica “nuevo hallazgo” a responsables (y opcionalmente admins/auditores). */
 function notify_nuevo_hallazgo(array $h, bool $notifyAdminsAlso = false): void {
   $pdo = get_pdo();
 
+  // URL absoluta o relativa, como prefieras; dejo relativa porque ya la usas así en tus datos
   $url = rtrim(BASE_URL,'/') . '/hallazgos/detalle.php?id=' . (int)$h['id'];
+
+  // Construir título/cuerpo (incluye código PDV si está)
   [$titulo, $cuerpo] = build_hallazgo_nuevo_title_body($h);
 
-  // Destinatarios responsables
+  // 1) Destinatarios: snapshot primero
   $uids = hallazgo_responsables((int)$h['id']);
 
-  // ¿También admins/auditores?
+  // 2) Si pidieron también admins/auditores, agrégalos
   if ($notifyAdminsAlso) {
-    $rs = $pdo->query("SELECT id FROM usuario WHERE activo=1 AND rol IN ('admin','auditor')")->fetchAll(PDO::FETCH_COLUMN);
-    foreach ($rs as $u) $uids[] = (int)$u;
+    try {
+      $rs = $pdo->query("SELECT id FROM usuario WHERE activo=1 AND rol IN ('admin','auditor')")->fetchAll(PDO::FETCH_COLUMN);
+      foreach ($rs as $u) $uids[] = (int)$u;
+    } catch (\Throwable $e) { /* noop */ }
   }
 
-  $uids = array_values(array_unique(array_filter($uids)));
+  // 3) Paracaídas: si quedó vacío, avisa al creador y a admin/auditor
+  $uids = array_values(array_unique(array_filter(array_map('intval', $uids))));
+  if (!$uids) {
+    $fallback = [];
+
+    // creador del hallazgo
+    if (!empty($h['creado_por'])) $fallback[] = (int)$h['creado_por'];
+
+    // admin/auditor activos
+    try {
+      $rs = $pdo->query("SELECT id FROM usuario WHERE activo=1 AND rol IN ('admin','auditor')")->fetchAll(PDO::FETCH_COLUMN);
+      foreach ($rs as $u) $fallback[] = (int)$u;
+    } catch (\Throwable $e) { /* noop */ }
+
+    $uids = array_values(array_unique(array_filter($fallback)));
+  }
+
+  // 4) Notificar (deduplicación por UNIQUE KEY si la tienes)
   notify_many($uids, $titulo, $cuerpo, $url, 'hallazgo', (int)$h['id'], 'H_NUEVO');
 }
 
-/**
- * Notifica a los responsables de un hallazgo con título/cuerpo personalizados.
- */
+/** Notifica a responsables con título/cuerpo personalizados. */
 function notify_hallazgo_to_responsables(
   array $h,
   string $codigo,
@@ -171,7 +204,7 @@ function notify_hallazgo_to_responsables(
       $pdo = get_pdo();
       $rs = $pdo->query("SELECT id FROM usuario WHERE activo=1 AND rol IN ('admin','auditor')")->fetchAll(PDO::FETCH_COLUMN);
       foreach ($rs as $u) $uids[] = (int)$u;
-    } catch (\Throwable $e) { /* noop */ }
+    } catch (\Throwable $e) {}
   }
 
   if ($excludeUserId) {
@@ -185,33 +218,27 @@ function notify_hallazgo_to_responsables(
   notify_many($uids, $titulo, $cuerpo, $url, 'hallazgo', (int)($h['id'] ?? 0), $codigo);
 }
 
-/**
- * Notifica “hallazgo respondido”.
- */
+/** Notifica “hallazgo respondido”. */
 function notify_hallazgo_respondido(array $h): void {
   $url    = rtrim(BASE_URL,'/') . '/hallazgos/detalle.php?id=' . (int)$h['id'];
   $titulo = 'Respuesta en hallazgo #' . (int)$h['id'];
   $cuerpo = 'Estado: ' . (string)($h['estado'] ?? '');
   $uids   = [];
 
-  // a) Creador (si existe)
   if (!empty($h['creado_por'])) $uids[] = (int)$h['creado_por'];
 
-  // b) Admin/Auditor
   $pdo = get_pdo();
   $rs = $pdo->query("SELECT id FROM usuario WHERE activo=1 AND rol IN ('admin','auditor')")->fetchAll(PDO::FETCH_COLUMN);
   foreach ($rs as $u) $uids[] = (int)$u;
 
-  // c) responsables
   $resps = hallazgo_responsables((int)$h['id']);
   $uids  = array_merge($uids, $resps);
 
   notify_many(array_unique($uids), $titulo, $cuerpo, $url, 'hallazgo', (int)$h['id'], 'H_RESPUESTA');
 }
 
-/* ========= Helpers para marcar leídas / contar ========= */
+/* ===== Helpers lectura/lectura múltiple/contador ===== */
 
-/** Marca UNA notificación como leída (si pertenece al usuario). */
 function notif_mark_read(int $notifId, int $userId): bool {
   if ($notifId <= 0 || $userId <= 0) return false;
   $pdo = get_pdo();
@@ -220,7 +247,6 @@ function notif_mark_read(int $notifId, int $userId): bool {
   return $st->execute([$notifId, $userId]);
 }
 
-/** Marca TODAS las notificaciones del usuario como leídas. */
 function notif_mark_all_read(int $userId): bool {
   if ($userId <= 0) return false;
   $pdo = get_pdo();
@@ -229,7 +255,6 @@ function notif_mark_all_read(int $userId): bool {
   return $st->execute([$userId]);
 }
 
-/** Devuelve el contador de no leídas. */
 function notif_unread_count(int $userId): int {
   if ($userId <= 0) return 0;
   $pdo = get_pdo();

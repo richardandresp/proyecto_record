@@ -47,3 +47,14 @@
 [2025-10-02T23:32:15-05:00] NOTIFY_NUEVO: Call to undefined function notify_nuevo_hallazgo()
 [2025-10-08T00:19:10-05:00] NOTIFY_NUEVO: Call to undefined function notify_nuevo_hallazgo()
 [2025-10-08T00:21:13-05:00] NOTIFY_NUEVO: Call to undefined function notify_nuevo_hallazgo()
+[2025-10-08T21:43:52-05:00] NOTIFY_NUEVO: Call to undefined function notify_nuevo_hallazgo()
+[2025-10-08T23:00:45-05:00] NOTIFY_NUEVO: Call to undefined function notify_nuevo_hallazgo()
+[2025-10-08T23:20:02-05:00] notify_nuevo_hallazgo(): Argument #1 ($h) must be of type array, null given, called in C:\xampp\htdocs\auditoria_app\public\hallazgos\nuevo_guardar.php on line 148
+[2025-10-08T23:28:47-05:00] notify_nuevo_hallazgo(): Argument #1 ($h) must be of type array, null given, called in C:\xampp\htdocs\auditoria_app\public\hallazgos\nuevo_guardar.php on line 148
+[2025-10-08T23:47:47-05:00] NOTIFY_NUEVO: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'h.pdv_id' in 'on clause'
+[2025-10-08T23:57:36-05:00] NOTIFY_NUEVO: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'h.pdv_id' in 'on clause'
+[2025-10-09T00:27:14-05:00] NOTIFY_NUEVO: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'h.pdv_id' in 'on clause'
+[2025-10-09T00:56:20-05:00] NOTIFY_NUEVO: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'h.pdv_id' in 'on clause'
+[2025-10-09T01:12:33-05:00] NOTIFY_NUEVO: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'h.pdv_id' in 'on clause'
+[2025-10-09T01:34:12-05:00] NOTIFY NUEVO OK hid=51
+[2025-10-09T01:44:19-05:00] NOTIFY NUEVO OK hid=52

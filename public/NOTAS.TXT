@@ -11,3 +11,9 @@ pendiente dejar todo en la normalidad sin obligación de guardar el texto en may
 ***********************************************************
 
 Pendiente por reparar el tema del login, salir o cerrar sesión dentro del mismo módulo
+
+************************************************************************
+
+🔴 Rojo = Mal (aumento en pendientes/vencidos)
+
+🟢 Verde = Buen (aumento en respondidos, disminución en pendientes/vencidos)

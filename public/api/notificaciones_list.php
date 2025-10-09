@@ -1,37 +1,43 @@
 <?php
-// public/api/notificaciones_list.php
+declare(strict_types=1);
+
 require_once __DIR__ . '/../../includes/session_boot.php';
+require_once __DIR__ . '/../../includes/env.php';
+require_once __DIR__ . '/../../includes/db.php';
+require_once __DIR__ . '/../../includes/auth.php';
+// --- Shim para linters / proyectos sin helper ---
+if (!function_exists('is_logged_in')) {
+  function is_logged_in(): bool {
+    return !empty($_SESSION['usuario_id']);
+  }
+}
+
+
 header('Content-Type: application/json; charset=utf-8');
 
-// No redirigir a login en APIs
-if (empty($_SESSION['usuario_id'])) {
+if (!is_logged_in()) {
   http_response_code(401);
-  echo json_encode(['ok' => false, 'error' => 'unauthorized']);
+  echo json_encode(['ok'=>false, 'error'=>'not_logged']);
   exit;
 }
 
-require_once __DIR__ . '/../../includes/env.php';
-require_once __DIR__ . '/../../includes/db.php';
+$uid   = (int)($_SESSION['usuario_id'] ?? 0);
+$limit = max(1, min(50, (int)($_GET['limit'] ?? 10)));
 
 try {
-  $uid   = (int)($_SESSION['usuario_id'] ?? 0);
-  $limit = max(1, min(20, (int)($_GET['limit'] ?? 10)));
+  $pdo = get_pdo();
+  $st = $pdo->prepare("
+    SELECT id, titulo, cuerpo, url, ref_type, ref_id, codigo, creado_en, leido_en
+    FROM notificacion
+    WHERE usuario_id=?
+    ORDER BY (leido_en IS NULL) DESC, id DESC
+    LIMIT {$limit}
+  ");
+  $st->execute([$uid]);
+  $items = $st->fetchAll(PDO::FETCH_ASSOC);
 
-  $pdo = getDB(); // <-- usa getDB()
-
-  // No dependemos de columna "codigo" aquí para evitar 1054 si no existe
-  $sql = "SELECT id, titulo, cuerpo, url, creado_en, leido_en
-          FROM notificacion
-          WHERE usuario_id = ?
-          ORDER BY COALESCE(leido_en, creado_en) DESC
-          LIMIT ?";
-  $st = $pdo->prepare($sql);
-  $st->bindValue(1, $uid,   PDO::PARAM_INT);
-  $st->bindValue(2, $limit, PDO::PARAM_INT);
-  $st->execute();
-
-  echo json_encode(['ok' => true, 'items' => $st->fetchAll(PDO::FETCH_ASSOC)], JSON_UNESCAPED_UNICODE);
+  echo json_encode(['ok'=>true, 'items'=>$items]);
 } catch (Throwable $e) {
   http_response_code(500);
-  echo json_encode(['ok' => false, 'error' => 'server_error']);
+  echo json_encode(['ok'=>false, 'error'=>$e->getMessage()]);
 }
