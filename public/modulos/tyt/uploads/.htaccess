@@ -1,0 +1,4 @@
+﻿# Bloquea ejecución de scripts en /uploads
+<FilesMatch "\.(php|php5|phtml|phar)$">
+  Deny from all
+</FilesMatch>
