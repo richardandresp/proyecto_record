@@ -2,7 +2,7 @@
 require_once __DIR__ . "/../includes/env_mod.php";
 require_once __DIR__ . "/../includes/ui.php";
 
-if (function_exists('user_has_perm') && !user_has_perm('tyt.cv.submit')) {
+if (!tyt_can('tyt.cv.submit')) {
   http_response_code(403); echo "Acceso denegado (tyt.cv.submit)"; exit;
 }
 
@@ -21,18 +21,23 @@ $curPerfil = $row['perfil'] ?? '';
 $tipoPersona = ($curPerfil === 'ASESORA') ? 'asesora' : 'aspirante';
 
 // Requisitos aplicables
-$stR = $pdo->prepare("SELECT id, nombre, obligatorio FROM tyt_cv_requisito
-                      WHERE activo=1 AND (aplica_a=:t OR aplica_a='ambos') ORDER BY nombre");
+$stR = $pdo->prepare("SELECT id, nombre, obligatorio, responsable_default_id
+                      FROM tyt_cv_requisito
+                      WHERE activo=1 AND (aplica_a=:t OR aplica_a='ambos')
+                      ORDER BY nombre");
 $stR->execute([':t'=>$tipoPersona]);
 $reqs = $stR->fetchAll(PDO::FETCH_ASSOC);
 
 // Usuarios (responsables posibles)
 $usuarios = $pdo->query("SELECT id, nombre FROM usuario WHERE activo=1 ORDER BY nombre")->fetchAll(PDO::FETCH_ASSOC);
 
+// Áreas (responsables posibles)
+$areas = $pdo->query("SELECT id, nombre FROM tyt_area WHERE activo=1 ORDER BY nombre")->fetchAll(PDO::FETCH_ASSOC);
+
 // Si estamos editando, carga checks previos
 $checks = [];
 if ($id>0) {
-  $s = $pdo->prepare("SELECT requisito_id, cumple, responsable_id FROM tyt_cv_requisito_check WHERE persona_id=:p");
+  $s = $pdo->prepare("SELECT requisito_id, cumple, responsable_id, responsable_area_id FROM tyt_cv_requisito_check WHERE persona_id=:p");
   $s->execute([':p'=>$id]);
   foreach($s->fetchAll(PDO::FETCH_ASSOC) as $c){ $checks[(int)$c['requisito_id']] = $c; }
 }
@@ -104,7 +109,7 @@ tyt_nav();
 
     <div class="col-md-3">
       <label class="form-label">Zona</label>
-      <select name="zona_id" class="form-select">
+      <select name="zona_id" class="form-select" id="selZona">
         <option value="">(sin zona)</option>
         <?php
           $curZ = (int)($row['zona_id'] ?? 0);
@@ -118,7 +123,7 @@ tyt_nav();
 
     <div class="col-md-3">
       <label class="form-label">Centro de costo</label>
-      <select name="cc_id" class="form-select">
+      <select name="cc_id" class="form-select" id="selCC">
         <option value="">(sin centro)</option>
         <?php
           $curC = (int)($row['cc_id'] ?? 0);
@@ -155,11 +160,13 @@ tyt_nav();
       <textarea name="comentarios" class="form-control" rows="3"></textarea>
     </div>
 
-    <div class="col-12">
-      <label class="form-label">Hoja de vida (PDF/JPG/PNG)</label>
-      <input type="file" name="hoja_vida" class="form-control" accept=".pdf,.jpg,.jpeg,.png">
-      <small class="text-muted">Máx. 5 MB. Opcional al editar.</small>
-    </div>
+    <?php if (tyt_can('tyt.cv.attach')): ?>
+      <div class="col-12">
+        <label class="form-label">Hoja de vida (PDF/JPG/PNG)</label>
+        <input type="file" name="hoja_vida" class="form-control" accept=".pdf,.jpg,.jpeg,.png">
+        <small class="text-muted">Máx. 5 MB.</small>
+      </div>
+    <?php endif; ?>
 
     <div class="col-12">
       <button type="button" class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#mdlChecklist">
@@ -185,15 +192,18 @@ tyt_nav();
             <?php if (!$reqs): ?>
               <div class="alert alert-warning">Aún no hay requisitos configurados.</div>
             <?php else: ?>
+              <?php
+              $puedeAsignarArea = tyt_can('tyt.cv.review'); // GH/Admin
+              ?>
               <div class="table-responsive">
                 <table class="table table-sm align-middle">
-                  <thead><tr><th>Ok</th><th>Documento</th><th>Obligatorio</th><th>Responsable</th></tr></thead>
+                  <thead><tr><th>Ok</th><th>Documento</th><th>Obligatorio</th><th>Responsable</th><th>Área responsable</th></tr></thead>
                   <tbody>
                   <?php foreach($reqs as $rq):
                     $rid = (int)$rq['id'];
                     $prev = $checks[$rid] ?? null;
                     $checked = ($prev && (int)$prev['cumple']===1) ? 'checked' : '';
-                    $respSel = (int)($prev['responsable_id'] ?? 0);
+                    $respSel = (int)($prev['responsable_id'] ?? ($rq['responsable_default_id'] ?? 0));
                   ?>
                     <tr>
                       <td><input type="checkbox" name="req_chk[<?= $rid ?>]" value="1" <?= $checked ?>></td>
@@ -207,6 +217,25 @@ tyt_nav();
                             <option value="<?= (int)$u['id'] ?>" <?= $sel ?>><?= hx($u['nombre']) ?></option>
                           <?php endforeach; ?>
                         </select>
+                      </td>
+                      <td>
+                        <?php
+                          $areaSel = (int)($prev['responsable_area_id'] ?? ($rq['responsable_area_id'] ?? 0));
+                          if ($puedeAsignarArea):
+                        ?>
+                          <select name="req_area[<?= $rid ?>]" class="form-select form-select-sm">
+                            <option value="">(sin asignar)</option>
+                            <?php foreach($areas as $a):
+                              $sel = ($areaSel === (int)$a['id']) ? 'selected' : ''; ?>
+                              <option value="<?= (int)$a['id'] ?>" <?= $sel ?>><?= hx($a['nombre']) ?></option>
+                            <?php endforeach; ?>
+                          </select>
+                        <?php else: ?>
+                          <span class="text-muted">
+                            <?= $areaSel ? hx(array_values(array_filter($areas, fn($x)=> (int)$x['id']===$areaSel))[0]['nombre'] ?? '(sin asignar)') : '(sin asignar)' ?>
+                          </span>
+                          <!-- No mandamos req_area[] si no tiene permiso, para que no pueda cambiar el área -->
+                        <?php endif; ?>
                       </td>
                     </tr>
                   <?php endforeach; ?>
@@ -223,4 +252,29 @@ tyt_nav();
     </div>
   </form>
 </div>
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  const selZona = document.getElementById('selZona');
+  const selCC   = document.getElementById('selCC');
+  if (!selZona || !selCC) return;
+
+  selZona.addEventListener('change', async () => {
+    const z = selZona.value || '';
+    selCC.innerHTML = '<option value="">(cargando…)</option>';
+    try {
+      const res = await fetch('<?= tyt_url('api/centros.php') ?>?zona_id=' + encodeURIComponent(z));
+      const data = await res.json();
+      selCC.innerHTML = '<option value="">(sin centro)</option>';
+      data.forEach(row => {
+        const opt = document.createElement('option');
+        opt.value = row.id; opt.textContent = row.nombre;
+        selCC.appendChild(opt);
+      });
+    } catch(e) {
+      selCC.innerHTML = '<option value="">(error)</option>';
+    }
+  });
+});
+</script>
+
 <?php tyt_footer(); ?>

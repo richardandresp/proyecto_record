@@ -1,6 +1,6 @@
 <?php
 require_once __DIR__ . "/../includes/env_mod.php";
-if (function_exists("user_has_perm") && !user_has_perm("tyt.cv.review")) {
+if (!tyt_can("tyt.cv.review")) {
   http_response_code(403); echo "Acceso denegado (tyt.cv.review)"; exit;
 }
 

@@ -1,7 +1,7 @@
 <?php
 require_once __DIR__ . "/../includes/env_mod.php";
 require_once __DIR__ . "/../includes/ui.php";
-if (function_exists('user_has_perm') && !user_has_perm('tyt.cv.view')) {
+if (!tyt_can('tyt.cv.view')) {
   http_response_code(403); echo "Acceso denegado (tyt.cv.view)"; exit;
 }
 
@@ -39,6 +39,7 @@ tyt_nav();
   </div>
 
   <div class="row g-3">
+    
     <div class="col-lg-6">
       <div class="card">
         <div class="card-header">Datos</div>
@@ -64,7 +65,7 @@ tyt_nav();
       <div class="card">
         <div class="card-header">Cambiar estado</div>
         <div class="card-body">
-          <?php if (!function_exists('user_has_perm') || user_has_perm('tyt.cv.review')): ?>
+          <?php if (tyt_can('tyt.cv.review')): ?>
             <form class="row gy-2" method="post" action="<?= tyt_url('cv/estado.php') ?>">
               <input type="hidden" name="id" value="<?= $id ?>">
               <div class="col-12 col-md-6">
@@ -80,6 +81,16 @@ tyt_nav();
               </div>
               <div class="col-12">
                 <button class="btn btn-sm btn-outline-primary">Actualizar</button>
+              </div>
+            </form>
+            <hr>
+            <form class="row gy-2" method="post" action="<?= tyt_url('cv/solicitar_docs.php') ?>">
+              <input type="hidden" name="id" value="<?= (int)$id ?>">
+              <!-- Si quieres que al solicitar pase a 'revision', deja este hidden.
+                   Si no quieres cambiar de estado, quita la siguiente línea. -->
+              <input type="hidden" name="next" value="revision">
+              <div class="col-12">
+                <button class="btn btn-sm btn-outline-warning">Solicitar documentos (obligatorios faltantes)</button>
               </div>
             </form>
           <?php else: ?>
@@ -105,6 +116,16 @@ tyt_nav();
                 </li>
               <?php endforeach; ?>
             </ul>
+          <?php endif; ?>
+          <?php if (tyt_can('tyt.cv.attach')): ?>
+            <form class="mt-2" method="post" action="<?= tyt_url('cv/upload_anexo.php') ?>" enctype="multipart/form-data">
+              <input type="hidden" name="persona_id" value="<?= (int)$id ?>">
+              <div class="input-group input-group-sm">
+                <input type="file" name="anexo" class="form-control" accept=".pdf,.jpg,.jpeg,.png" required>
+                <button class="btn btn-outline-primary">Subir</button>
+              </div>
+              <small class="text-muted">Solo Gestión Humana/Admin.</small>
+            </form>
           <?php endif; ?>
         </div>
       </div>
@@ -138,5 +159,63 @@ tyt_nav();
       </div>
     </div>
   </div>
+<?php
+// --- Checklist para mostrar en Detalle ---
+$stChk = $pdo->prepare("
+  SELECT r.id, r.nombre, r.obligatorio,
+         COALESCE(c.cumple,0) AS cumple,
+         c.responsable_id,
+         u.nombre AS responsable_nombre
+  FROM tyt_cv_requisito r
+  LEFT JOIN tyt_cv_requisito_check c
+    ON c.requisito_id = r.id AND c.persona_id = :pid
+  LEFT JOIN usuario u
+    ON u.id = c.responsable_id
+  WHERE r.activo=1 AND (r.aplica_a=:tipo OR r.aplica_a='ambos')
+  ORDER BY r.nombre
+");
+$tipoPersona = ($per['perfil'] === 'ASESORA') ? 'asesora' : 'aspirante';
+$stChk->execute([':pid'=>$id, ':tipo'=>$tipoPersona]);
+$reqList = $stChk->fetchAll(PDO::FETCH_ASSOC);
+$tot = count($reqList);
+$ok  = array_sum(array_map(fn($x)=> (int)$x['cumple'], $reqList));
+?>
+<div class="col-12">
+  <div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <span>Checklist de documentos</span>
+      <span class="badge text-bg-secondary"><?= $ok ?>/<?= $tot ?> completos</span>
+    </div>
+    <div class="card-body">
+      <?php if(!$reqList): ?>
+        <div class="text-muted">No hay requisitos configurados para este perfil.</div>
+      <?php else: ?>
+        <div class="table-responsive">
+          <table class="table table-sm align-middle">
+            <thead>
+              <tr>
+                <th>OK</th><th>Documento</th><th>Obligatorio</th><th>Responsable</th>
+              </tr>
+            </thead>
+            <tbody>
+            <?php foreach($reqList as $rq): ?>
+              <tr>
+                <td><?= ((int)$rq['cumple']===1) ? '✅' : '—' ?></td>
+                <td><?= hx($rq['nombre']) ?></td>
+                <td><?= ((int)$rq['obligatorio']===1) ? '<span class="badge text-bg-danger">Sí</span>' : 'No' ?></td>
+                <td><?= $rq['responsable_nombre'] ? hx($rq['responsable_nombre']) : '<span class="text-muted">(sin asignar)</span>' ?></td>
+              </tr>
+            <?php endforeach; ?>
+            </tbody>
+          </table>
+        </div>
+      <?php endif; ?>
+      <div class="mt-2">
+        <a class="btn btn-sm btn-outline-primary" href="<?= tyt_url('cv/editar.php?id='.$id) ?>">Editar / marcar checklist</a>
+      </div>
+    </div>
+  </div>
+</div>
+
 </div>
 <?php tyt_footer(); ?>

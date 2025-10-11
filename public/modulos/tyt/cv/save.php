@@ -89,7 +89,9 @@ try {
   }
 
   // Si vino archivo de Hoja de Vida, lo guardamos
-  if (!empty($_FILES['hoja_vida']) && $_FILES['hoja_vida']['error'] === UPLOAD_ERR_OK) {
+  $puedeAdjuntar = !function_exists('user_has_perm') || user_has_perm('tyt.cv.attach');
+
+  if ($puedeAdjuntar && !empty($_FILES['hoja_vida']) && $_FILES['hoja_vida']['error'] === UPLOAD_ERR_OK) {
     $file = $_FILES['hoja_vida'];
 
     // Validar tamaño (5 MB máx) y extensión
@@ -153,23 +155,30 @@ try {
     ]);
   }
 
-  // Guardar checklist (si envían)
-  $req_chk  = $_POST['req_chk'] ?? [];     // req_chk[req_id] = "1"
-  $req_resp = $_POST['req_resp'] ?? [];    // req_resp[req_id] = usuario_id
+  // Mapa de área por defecto por requisito (para fallback)
+  $stDef = $pdo->prepare("SELECT id, responsable_area_id FROM tyt_cv_requisito WHERE activo=1");
+  $stDef->execute();
+  $defAreaByReq = [];
+  foreach ($stDef->fetchAll(PDO::FETCH_ASSOC) as $rdef) {
+    $defAreaByReq[(int)$rdef['id']] = $rdef['responsable_area_id'] !== null ? (int)$rdef['responsable_area_id'] : null;
+  }
 
-  if (is_array($req_chk) || is_array($req_resp)) {
-    // Traer requisitos aplicables (por seguridad)
+  // Guardar checklist (si envían)
+  $req_chk  = $_POST['req_chk']  ?? [];   // [requisito_id] => 1/0
+  $req_area = $_POST['req_area'] ?? [];   // [requisito_id] => area_id
+
+  if (is_array($req_chk) || is_array($req_area)) {
     $tipoPersona = ($perfil === 'ASESORA') ? 'asesora' : 'aspirante';
     $stRq = $pdo->prepare("SELECT id FROM tyt_cv_requisito WHERE activo=1 AND (aplica_a=:t OR aplica_a='ambos')");
     $stRq->execute([':t'=>$tipoPersona]);
     $validReqIds = array_map(fn($r)=>(int)$r['id'], $stRq->fetchAll(PDO::FETCH_ASSOC));
 
     $up = $pdo->prepare("
-      INSERT INTO tyt_cv_requisito_check (persona_id, requisito_id, cumple, responsable_id, verificado_por, verificado_en)
-      VALUES (:p, :r, :c, :resp, :user, NOW())
+      INSERT INTO tyt_cv_requisito_check (persona_id, requisito_id, cumple, responsable_area_id, verificado_por, verificado_en)
+      VALUES (:p, :r, :c, :area, :user, NOW())
       ON DUPLICATE KEY UPDATE
         cumple=VALUES(cumple),
-        responsable_id=VALUES(responsable_id),
+        responsable_area_id=VALUES(responsable_area_id),
         verificado_por=VALUES(verificado_por),
         verificado_en=VALUES(verificado_en)
     ");
@@ -177,10 +186,12 @@ try {
     $userId = (int)($_SESSION['usuario_id'] ?? 0);
     foreach ($validReqIds as $rid) {
       $cumple = isset($req_chk[$rid]) ? 1 : 0;
-      $respId = isset($req_resp[$rid]) && $req_resp[$rid]!=='' ? (int)$req_resp[$rid] : null;
+      $areaId = isset($req_area[$rid]) && $req_area[$rid] !== ''
+                ? (int)$req_area[$rid]
+                : ($defAreaByReq[$rid] ?? null); // fallback al área por defecto del requisito
       $up->execute([
         ':p'=>$personaId, ':r'=>$rid, ':c'=>$cumple,
-        ':resp'=>$respId, ':user'=>$userId
+        ':area'=>$areaId, ':user'=>$userId
       ]);
     }
   }

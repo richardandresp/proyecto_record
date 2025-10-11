@@ -19,9 +19,30 @@ function tyt_url(string $rel = ''): string {
   return rtrim(TYT_BASE, '/') . '/' . ltrim($rel, '/');
 }
 
-/** ACL helper (si no hay ACL, deja pasar) */
+/** Permisos efectivos del módulo TYT (usa override de sesión si existe) */
 function tyt_can(string $perm): bool {
-  return function_exists('user_has_perm') ? user_has_perm($perm) : true;
+  // Override temporal por sesión (solo módulo TYT)
+  if (!empty($_SESSION['tyt_perms_override']) && array_key_exists($perm, $_SESSION['tyt_perms_override'])) {
+    return (bool)$_SESSION['tyt_perms_override'][$perm];
+  }
+  // ACL real de la app (si existe)
+  if (function_exists('user_has_perm')) {
+    return (bool)user_has_perm($perm);
+  }
+  // Por defecto, permitir (útil en desarrollo si no hay ACL)
+  return true;
+}
+
+/** Requiere permiso o sale con 403 */
+function tyt_require(string $perm): void {
+  if (!tyt_can($perm)) { http_response_code(403); exit('Acceso denegado ('.$perm.')'); }
+}
+
+/** Muestra una banda si hay overrides activos */
+function tyt_debug_ribbon(): void {
+  if (!empty($_SESSION['tyt_perms_override'])) {
+    echo '<div style="position:sticky;top:0;z-index:1031" class="alert alert-warning mb-0 py-1 text-center">🔧 Overrides de permisos activos en esta sesión</div>';
+  }
 }
 
 /** Marcar item activo por URL parcial */
@@ -42,9 +63,11 @@ function tyt_header(string $title = 'T&T'): void { ?>
   <title><?= htmlspecialchars($title) ?></title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <!-- CDN Bootstrap (rápido). Luego lo puedes cambiar a tus assets del core -->
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css    ">
 </head>
 <body class="bg-light">
+<?php tyt_debug_ribbon(); ?>
+
 <?php }
 
 /** Navbar del módulo */
@@ -79,9 +102,15 @@ function tyt_nav(): void { ?>
           <?php endif; ?>
 
           <?php if (tyt_can('tyt.admin')): ?>
-            <li class="nav-item">
-              <a class="nav-link <?= tyt_is_active(['/tyt/admin/']) ?>"
-                 href="<?= tyt_url('admin/index.php') ?>">Admin</a>
+            <li class="nav-item dropdown">
+              <a class="nav-link dropdown-toggle <?= tyt_is_active(['/tyt/admin/']) ?>" href="#" role="button" data-bs-toggle="dropdown">
+                Admin
+              </a>
+              <ul class="dropdown-menu">
+                <li><a class="dropdown-item" href="<?= tyt_url('admin/semaforo.php') ?>">Semáforo (config)</a></li>
+                <li><a class="dropdown-item" href="<?= tyt_url('admin/requisitos.php') ?>">Requisitos (checklist)</a></li>
+                <li><a class="dropdown-item" href="<?= tyt_url('admin/whoami.php') ?>">¿Quién soy? / Overrides</a></li>
+              </ul>
             </li>
           <?php endif; ?>
         </ul>
@@ -92,6 +121,7 @@ function tyt_nav(): void { ?>
 
 /** Cierre body/html */
 function tyt_footer(): void { ?>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js    "></script>
 </body>
 </html>
 <?php }

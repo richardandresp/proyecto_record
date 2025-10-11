@@ -1,5 +1,4 @@
-﻿```php
-<?php
+﻿<?php
 require_once __DIR__ . "/../includes/env_mod.php";
 require_once __DIR__ . "/../includes/ui.php";
 
@@ -38,7 +37,7 @@ $offset = ($page - 1) * $limit;
 /* === Ámbito por zona/CC para no-admin === */
 $scopeConds  = [];
 $scopeParams = [];
-if (function_exists('user_has_perm') && !user_has_perm('tyt.admin')) {
+if (!tyt_can('tyt.admin')) {
   if (!empty($_SESSION['zona_id'])) {
     $scopeConds[] = "zona_id = :scope_zona";
     $scopeParams[':scope_zona'] = (int)$_SESSION['zona_id'];
@@ -240,10 +239,10 @@ tyt_nav();
 
   <!-- Acciones -->
   <div class="mb-3 d-flex gap-2">
-    <?php if (!function_exists('user_has_perm') || user_has_perm('tyt.cv.submit')): ?>
+    <?php if (tyt_can('tyt.cv.submit')): ?>
       <a class="btn btn-success" href="<?= tyt_url('cv/editar.php') ?>">+ Nueva HV</a>
     <?php endif; ?>
-    <?php if (function_exists('user_has_perm') && user_has_perm('tyt.cv.export')): ?>
+    <?php if (tyt_can('tyt.cv.export')): ?>
       <a class="btn btn-outline-secondary" href="<?= tyt_url('reportes/index.php') ?>">Exportar</a>
     <?php else: ?>
       <button class="btn btn-outline-secondary" disabled>Exportar</button>
@@ -306,7 +305,7 @@ tyt_nav();
             <td class="d-flex flex-wrap gap-1">
               <a class="btn btn-sm btn-outline-secondary" href="<?= tyt_url('cv/detalle.php') . '?id=' . (int)$r['id'] ?>">Ver</a>
               <a class="btn btn-sm btn-outline-primary"   href="<?= tyt_url('cv/editar.php') . '?id=' . (int)$r['id'] ?>">Editar</a>
-              <?php if (function_exists('user_has_perm') && user_has_perm('tyt.cv.review')): ?>
+              <?php if (tyt_can('tyt.cv.review')): ?>
                 <form method="post" action="<?= tyt_url('cv/estado.php') ?>" class="d-inline">
                   <input type="hidden" name="id" value="<?= (int)$r['id'] ?>">
                   <input type="hidden" name="to" value="revision">
@@ -355,4 +354,3 @@ tyt_nav();
   <?php endif; ?>
 </div>
 <?php tyt_footer(); ?>
-```

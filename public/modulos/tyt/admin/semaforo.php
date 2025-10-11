@@ -1,7 +1,7 @@
 <?php
 require_once __DIR__ . "/../includes/env_mod.php";
 require_once __DIR__ . "/../includes/ui.php";
-if (function_exists('user_has_perm') && !user_has_perm('tyt.admin')) { http_response_code(403); exit('Acceso denegado'); }
+if (!tyt_can('tyt.admin')) { http_response_code(403); exit('Acceso denegado'); }
 $pdo = getDB();
 
 function cfg_get($pdo,$k,$def){ $s=$pdo->prepare("SELECT valor FROM tyt_config WHERE clave=:k"); $s->execute([':k'=>$k]); $v=$s->fetchColumn(); return $v!==false?$v:$def; }
