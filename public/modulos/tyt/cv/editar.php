@@ -16,6 +16,27 @@ if ($id > 0) {
   $row = $st->fetch(PDO::FETCH_ASSOC);
 }
 
+// Determinar tipo por perfil (para aplicar requisitos)
+$curPerfil = $row['perfil'] ?? '';
+$tipoPersona = ($curPerfil === 'ASESORA') ? 'asesora' : 'aspirante';
+
+// Requisitos aplicables
+$stR = $pdo->prepare("SELECT id, nombre, obligatorio FROM tyt_cv_requisito
+                      WHERE activo=1 AND (aplica_a=:t OR aplica_a='ambos') ORDER BY nombre");
+$stR->execute([':t'=>$tipoPersona]);
+$reqs = $stR->fetchAll(PDO::FETCH_ASSOC);
+
+// Usuarios (responsables posibles)
+$usuarios = $pdo->query("SELECT id, nombre FROM usuario WHERE activo=1 ORDER BY nombre")->fetchAll(PDO::FETCH_ASSOC);
+
+// Si estamos editando, carga checks previos
+$checks = [];
+if ($id>0) {
+  $s = $pdo->prepare("SELECT requisito_id, cumple, responsable_id FROM tyt_cv_requisito_check WHERE persona_id=:p");
+  $s->execute([':p'=>$id]);
+  foreach($s->fetchAll(PDO::FETCH_ASSOC) as $c){ $checks[(int)$c['requisito_id']] = $c; }
+}
+
 // Cargar Zonas activas
 $zonas = $pdo->query("SELECT id, nombre FROM zona WHERE activo=1 ORDER BY nombre")->fetchAll(PDO::FETCH_ASSOC);
 
@@ -140,9 +161,65 @@ tyt_nav();
       <small class="text-muted">Máx. 5 MB. Opcional al editar.</small>
     </div>
 
+    <div class="col-12">
+      <button type="button" class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#mdlChecklist">
+        Checklist de documentos
+      </button>
+      <small class="text-muted ms-2">Marca los documentos entregados y asigna responsable del trámite.</small>
+    </div>
+
     <div class="col-12 d-flex gap-2">
       <a href="<?= tyt_url('cv/listar.php') ?>" class="btn btn-outline-secondary">Volver</a>
       <button class="btn btn-primary">Guardar</button>
+    </div>
+
+    <!-- Modal Checklist -->
+    <div class="modal fade" id="mdlChecklist" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">Checklist de documentos</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body">
+            <?php if (!$reqs): ?>
+              <div class="alert alert-warning">Aún no hay requisitos configurados.</div>
+            <?php else: ?>
+              <div class="table-responsive">
+                <table class="table table-sm align-middle">
+                  <thead><tr><th>Ok</th><th>Documento</th><th>Obligatorio</th><th>Responsable</th></tr></thead>
+                  <tbody>
+                  <?php foreach($reqs as $rq):
+                    $rid = (int)$rq['id'];
+                    $prev = $checks[$rid] ?? null;
+                    $checked = ($prev && (int)$prev['cumple']===1) ? 'checked' : '';
+                    $respSel = (int)($prev['responsable_id'] ?? 0);
+                  ?>
+                    <tr>
+                      <td><input type="checkbox" name="req_chk[<?= $rid ?>]" value="1" <?= $checked ?>></td>
+                      <td><?= hx($rq['nombre']) ?></td>
+                      <td><?= ((int)$rq['obligatorio']===1) ? '<span class="badge text-bg-danger">Sí</span>' : 'No' ?></td>
+                      <td>
+                        <select name="req_resp[<?= $rid ?>]" class="form-select form-select-sm">
+                          <option value="">(sin asignar)</option>
+                          <?php foreach($usuarios as $u):
+                            $sel = ($respSel === (int)$u['id']) ? 'selected' : ''; ?>
+                            <option value="<?= (int)$u['id'] ?>" <?= $sel ?>><?= hx($u['nombre']) ?></option>
+                          <?php endforeach; ?>
+                        </select>
+                      </td>
+                    </tr>
+                  <?php endforeach; ?>
+                  </tbody>
+                </table>
+              </div>
+            <?php endif; ?>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cerrar</button>
+          </div>
+        </div>
+      </div>
     </div>
   </form>
 </div>

@@ -1,226 +1,358 @@
-﻿<?php
+﻿```php
+<?php
 require_once __DIR__ . "/../includes/env_mod.php";
 require_once __DIR__ . "/../includes/ui.php";
 
-if (function_exists('user_has_perm') && !user_has_perm('tyt.cv.submit')) {
-  http_response_code(403); echo "Acceso denegado (tyt.cv.submit)"; exit;
+/* === Helpers === */
+function hx(?string $s): string { return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
+function semaforo_class(int $dias, int $sla, int $vmin, int $nmin): string {
+  if ($sla - $dias >= $vmin) return 'bg-success';
+  if ($sla - $dias >= $nmin) return 'bg-warning';
+  return 'bg-danger';
+}
+function badge_estado(string $estado): string {
+  $map = [
+    'recibido'              => 'secondary',
+    'revision'              => 'info',
+    'contacto_inicial'      => 'primary',
+    'en_capacitacion'       => 'warning',
+    'en_activacion'         => 'success',
+    'entregado_comercial'   => 'dark',
+    'rechazado'             => 'danger',
+  ];
+  $cls = $map[$estado] ?? 'secondary';
+  return '<span class="badge text-bg-' . $cls . '">' . hx($estado) . '</span>';
 }
 
+/* === Parámetros de filtro === */
+$q      = trim($_GET['q']      ?? '');
+$estado = trim($_GET['estado'] ?? '');
+$perfil = trim($_GET['perfil'] ?? '');
+$desde  = trim($_GET['desde']  ?? '');
+$hasta  = trim($_GET['hasta']  ?? '');
+$venc   = trim($_GET['venc']   ?? ''); // 'verde' | 'naranja' | 'rojo'
+$page   = max(1, (int)($_GET['page'] ?? 1));
+$limit  = 20;
+$offset = ($page - 1) * $limit;
+
+/* === Ámbito por zona/CC para no-admin === */
+$scopeConds  = [];
+$scopeParams = [];
+if (function_exists('user_has_perm') && !user_has_perm('tyt.admin')) {
+  if (!empty($_SESSION['zona_id'])) {
+    $scopeConds[] = "zona_id = :scope_zona";
+    $scopeParams[':scope_zona'] = (int)$_SESSION['zona_id'];
+  }
+  // Si deseas acotar por centro de costo del usuario, descomenta:
+  // if (!empty($_SESSION['cc_id'])) {
+  //   $scopeConds[] = "cc_id = :scope_cc";
+  //   $scopeParams[':scope_cc'] = (int)$_SESSION['cc_id'];
+  // }
+}
+$whereScope = $scopeConds ? ('WHERE ' . implode(' AND ', $scopeConds)) : '';
+
+/* === Cargar config del semáforo === */
 $pdo = getDB();
-$id  = (int)($_GET['id'] ?? 0);
-$row = null;
+function cfg_get($pdo,$k,$def){ $s=$pdo->prepare("SELECT valor FROM config WHERE clave=:k"); $s->execute([':k'=>$k]); $v=$s->fetchColumn(); return $v!==false?(int)$v:$def; }
+$sla     = cfg_get($pdo, 'tyt.sla_dias', 12);
+$vmin    = cfg_get($pdo, 'tyt.semaforo.verde_min', 6);
+$nmin    = cfg_get($pdo, 'tyt.semaforo.naranja_min', 1);
 
-if ($id > 0) {
-  $st = $pdo->prepare("SELECT * FROM tyt_cv_persona WHERE id = :id");
-  $st->execute([':id' => $id]);
-  $row = $st->fetch(PDO::FETCH_ASSOC);
+/* === Conteos del semáforo (SIEMPRE excluye rechazado/entregado) === */
+$counts = ['verde'=>0,'naranja'=>0,'rojo'=>0];
+try {
+  $sqlCnt = "
+    SELECT
+      SUM(CASE WHEN (:sla - DATEDIFF(CURDATE(), DATE(fecha_estado))) >= :vmin
+                AND estado NOT IN ('entregado_comercial','rechazado') THEN 1 ELSE 0 END) AS c_verde,
+      SUM(CASE WHEN (:sla - DATEDIFF(CURDATE(), DATE(fecha_estado))) >= :nmin
+                AND (:sla - DATEDIFF(CURDATE(), DATE(fecha_estado))) < :vmin
+                AND estado NOT IN ('entregado_comercial','rechazado') THEN 1 ELSE 0 END) AS c_naranja,
+      SUM(CASE WHEN (:sla - DATEDIFF(CURDATE(), DATE(fecha_estado))) < :nmin
+                AND estado NOT IN ('entregado_comercial','rechazado') THEN 1 ELSE 0 END) AS c_rojo
+    FROM tyt_cv_persona
+    $whereScope
+  ";
+  $stc = $pdo->prepare($sqlCnt);
+  foreach($scopeParams as $k=>$v){ $stc->bindValue($k,$v); }
+  $stc->bindValue(':sla',$sla,PDO::PARAM_INT);
+  $stc->bindValue(':vmin',$vmin,PDO::PARAM_INT);
+  $stc->bindValue(':nmin',$nmin,PDO::PARAM_INT);
+  $stc->execute();
+  $rowCnt = $stc->fetch(PDO::FETCH_ASSOC) ?: [];
+  $counts['verde']   = (int)($rowCnt['c_verde']   ?? 0);
+  $counts['naranja'] = (int)($rowCnt['c_naranja'] ?? 0);
+  $counts['rojo']    = (int)($rowCnt['c_rojo']    ?? 0);
+} catch (Throwable $e) { /* si falla, dejamos 0s */ }
+
+/* === Construcción dinámica del WHERE para la grilla === */
+$conds  = $scopeConds;   // partimos del scope
+$params = $scopeParams;
+
+if ($q !== '') {
+  $conds[]          = "(doc_numero LIKE :q OR nombre_completo LIKE :q2)";
+  $params[':q']     = "%$q%";
+  $params[':q2']    = "%$q%";
+}
+if ($estado !== '') {
+  $conds[]              = "estado = :estado";
+  $params[':estado']    = $estado;
+}
+if ($perfil !== '') {
+  $conds[]              = "perfil = :perfil";
+  $params[':perfil']    = $perfil;
+}
+if ($desde !== '') {
+  $conds[]              = "DATE(fecha_estado) >= :desde";
+  $params[':desde']     = $desde;
+}
+if ($hasta !== '') {
+  $conds[]              = "DATE(fecha_estado) <= :hasta";
+  $params[':hasta']     = $hasta;
 }
 
-// Determinar tipo por perfil (para aplicar requisitos)
-$curPerfil = $row['perfil'] ?? '';
-$tipoPersona = ($curPerfil === 'ASESORA') ? 'asesora' : 'aspirante';
-
-// Requisitos aplicables
-$stR = $pdo->prepare("SELECT id, nombre, obligatorio FROM tyt_cv_requisito
-                      WHERE activo=1 AND (aplica_a=:t OR aplica_a='ambos') ORDER BY nombre");
-$stR->execute([':t'=>$tipoPersona]);
-$reqs = $stR->fetchAll(PDO::FETCH_ASSOC);
-
-// Usuarios (responsables posibles)
-$usuarios = $pdo->query("SELECT id, nombre FROM usuario WHERE activo=1 ORDER BY nombre")->fetchAll(PDO::FETCH_ASSOC);
-
-// Si estamos editando, carga checks previos
-$checks = [];
-if ($id>0) {
-  $s = $pdo->prepare("SELECT requisito_id, cumple, responsable_id FROM tyt_cv_requisito_check WHERE persona_id=:p");
-  $s->execute([':p'=>$id]);
-  foreach($s->fetchAll(PDO::FETCH_ASSOC) as $c){ $checks[(int)$c['requisito_id']] = $c; }
+/* === Filtro por “vencimiento” del semáforo (excluye rechazado/entregado) === */
+if ($venc === 'verde') {
+  $conds[] = "(:sla - DATEDIFF(CURDATE(), DATE(fecha_estado))) >= :vmin_v";
+  $conds[] = "estado NOT IN ('entregado_comercial','rechazado')";
+  $params[':sla'] = $sla; $params[':vmin_v'] = $vmin;
+} elseif ($venc === 'naranja') {
+  $conds[] = "(:sla - DATEDIFF(CURDATE(), DATE(fecha_estado))) >= :nmin_v";
+  $conds[] = "(:sla - DATEDIFF(CURDATE(), DATE(fecha_estado))) < :vmin_v";
+  $conds[] = "estado NOT IN ('entregado_comercial','rechazado')";
+  $params[':sla'] = $sla; $params[':nmin_v'] = $nmin; $params[':vmin_v'] = $vmin;
+} elseif ($venc === 'rojo') {
+  $conds[] = "(:sla - DATEDIFF(CURDATE(), DATE(fecha_estado))) < :nmin_v";
+  $conds[] = "estado NOT IN ('entregado_comercial','rechazado')";
+  $params[':sla'] = $sla; $params[':nmin_v'] = $nmin;
 }
 
-// Cargar Zonas activas
-$zonas = $pdo->query("SELECT id, nombre FROM zona WHERE activo=1 ORDER BY nombre")->fetchAll(PDO::FETCH_ASSOC);
+$where = $conds ? ('WHERE ' . implode(' AND ', $conds)) : '';
 
-// Si ya hay zona elegida, trae centros de esa zona; si no, trae todos activos
-$zonaSel = (int)($row['zona_id'] ?? 0);
-if ($zonaSel > 0) {
-  $stCC = $pdo->prepare("SELECT id, nombre FROM centro_costo WHERE activo=1 AND zona_id=:z ORDER BY nombre");
-  $stCC->execute([':z'=>$zonaSel]);
-  $centros = $stCC->fetchAll(PDO::FETCH_ASSOC);
-} else {
-  $centros = $pdo->query("SELECT id, nombre FROM centro_costo WHERE activo=1 ORDER BY nombre")->fetchAll(PDO::FETCH_ASSOC);
+/* === Query principal === */
+$total = 0;
+$rows  = [];
+try {
+  $sqlCount = "SELECT COUNT(*) FROM tyt_cv_persona $where";
+  $stc2 = $pdo->prepare($sqlCount);
+  $stc2->execute($params);
+  $total = (int)$stc2->fetchColumn();
+
+  $sql = "
+    SELECT id, doc_tipo, doc_numero, nombre_completo, perfil, estado,
+           zona_id, cc_id, cargo_id,
+           fecha_estado,
+           DATEDIFF(CURDATE(), DATE(fecha_estado)) AS dias,
+           (:sla - DATEDIFF(CURDATE(), DATE(fecha_estado))) AS faltan
+    FROM tyt_cv_persona
+    $where
+    ORDER BY fecha_estado DESC
+    LIMIT :limit OFFSET :offset
+  ";
+  $st = $pdo->prepare($sql);
+  foreach ($params as $k => $v) { $st->bindValue($k, $v); }
+  $st->bindValue(':limit',  $limit, PDO::PARAM_INT);
+  $st->bindValue(':offset', $offset, PDO::PARAM_INT);
+  $st->bindValue(':sla',$sla,PDO::PARAM_INT);
+  $st->execute();
+  $rows = $st->fetchAll(PDO::FETCH_ASSOC);
+} catch (Throwable $e) {
+  $err = $e->getMessage();
 }
 
-function hx($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
+$pages = max(1, (int)ceil($total / $limit));
 
-$msgOk = isset($_GET['ok']) ? "Guardado correctamente." : "";
-$msgEr = isset($_GET['e'])  ? $_GET['e'] : "";
-tyt_header('T&T · Registrar Hoja de Vida');
+/* Utilidad para armar URLs conservando filtros */
+$qbase = $_GET; unset($qbase['page']);
+$makeUrl = function($more = []) use ($qbase) {
+  $q = array_merge($qbase, $more);
+  return '?' . http_build_query($q);
+};
+
+tyt_header('T&T · Hojas de Vida');
 tyt_nav();
 ?>
 <div class="container">
-  <h1 class="h4 mb-3">T&T · Registrar Hoja de Vida</h1>
+  <h1 class="h4 mb-3">T&T · Hojas de Vida</h1>
 
-  <?php if ($msgOk): ?><div class="alert alert-success"><?= hx($msgOk) ?></div><?php endif; ?>
-  <?php if ($msgEr): ?><div class="alert alert-danger">Error: <?= hx($msgEr) ?></div><?php endif; ?>
-
-  <form class="row g-3" method="post" action="<?= tyt_url('cv/save.php') ?>" enctype="multipart/form-data">
-    <?php if ($id>0): ?>
-      <input type="hidden" name="id" value="<?= (int)$id ?>">
+  <!-- Botonera Semáforo -->
+  <div class="d-flex gap-2 mb-3">
+    <a class="btn rounded-pill d-inline-flex align-items-center <?= $venc==='verde'?'btn-success':'btn-outline-success' ?>"
+       href="<?= hx($makeUrl(['venc'=>'verde','page'=>1])) ?>">
+      <span class="me-2" style="width:10px;height:10px;border-radius:50%;display:inline-block;background:#198754"></span>
+      Verde (>=<?= $vmin ?>): <strong class="ms-1"><?= $counts['verde'] ?></strong>
+    </a>
+    <a class="btn rounded-pill d-inline-flex align-items-center <?= $venc==='naranja'?'btn-warning':'btn-outline-warning' ?>"
+       href="<?= hx($makeUrl(['venc'=>'naranja','page'=>1])) ?>">
+      <span class="me-2" style="width:10px;height:10px;border-radius:50%;display:inline-block;background:#ffc107"></span>
+      Naranja (>=<?= $nmin ?> y <<?= $vmin ?>): <strong class="ms-1"><?= $counts['naranja'] ?></strong>
+    </a>
+    <a class="btn rounded-pill d-inline-flex align-items-center <?= $venc==='rojo'?'btn-danger':'btn-outline-danger' ?>"
+       href="<?= hx($makeUrl(['venc'=>'rojo','page'=>1])) ?>">
+      <span class="me-2" style="width:10px;height:10px;border-radius:50%;display:inline-block;background:#dc3545"></span>
+      Rojo (<<?= $nmin ?>): <strong class="ms-1"><?= $counts['rojo'] ?></strong>
+    </a>
+    <?php if ($venc!==''): ?>
+      <a class="btn btn-outline-secondary ms-2" href="<?= hx($makeUrl(['venc'=>null,'page'=>1])) ?>">Quitar filtro</a>
     <?php endif; ?>
+  </div>
 
-    <div class="col-md-2">
-      <label class="form-label">Tipo Doc.</label>
-      <select name="doc_tipo" class="form-select" required>
+  <!-- Filtros -->
+  <form class="row g-2 mb-3" method="get" action="">
+    <input type="hidden" name="venc" value="<?= hx($venc) ?>">
+    <div class="col-12 col-md-3">
+      <input class="form-control" name="q" value="<?= hx($q) ?>" placeholder="Buscar: nombre o documento">
+    </div>
+    <div class="col-6 col-md-2">
+      <select class="form-select" name="estado">
         <?php
-          $opts = ['CC'=>'CC','CE'=>'CE','PA'=>'Pasaporte'];
-          $cur  = $row['doc_tipo'] ?? 'CC';
-          foreach($opts as $v=>$t){ $sel = ($cur===$v)?'selected':''; echo "<option value='$v' $sel>$t</option>"; }
-        ?>
-      </select>
-    </div>
-
-    <div class="col-md-4">
-      <label class="form-label">N° Documento</label>
-      <input name="doc_numero" class="form-control" required maxlength="30" value="<?= hx($row['doc_numero'] ?? '') ?>">
-      <?php if ($id>0): ?><small class="text-muted">Si cambias este valor, se actualiza la HV existente por la unicidad doc_tipo+doc_numero.</small><?php endif; ?>
-    </div>
-
-    <div class="col-md-6">
-      <label class="form-label">Nombre completo</label>
-      <input name="nombre_completo" class="form-control" required maxlength="180" value="<?= hx($row['nombre_completo'] ?? '') ?>">
-    </div>
-
-    <div class="col-md-3">
-      <label class="form-label">Perfil</label>
-      <select name="perfil" class="form-select" required>
-        <?php
-          $perfiles = ['TAT','EMP','ASESORA'];
-          $curp = $row['perfil'] ?? '';
-          echo '<option value="">Seleccione…</option>';
-          foreach($perfiles as $p){ $sel = ($curp===$p)?'selected':''; echo "<option $sel>$p</option>"; }
-        ?>
-      </select>
-    </div>
-
-    <div class="col-md-3">
-      <label class="form-label">Zona</label>
-      <select name="zona_id" class="form-select">
-        <option value="">(sin zona)</option>
-        <?php
-          $curZ = (int)($row['zona_id'] ?? 0);
-          foreach($zonas as $z){
-            $sel = ($curZ === (int)$z['id']) ? 'selected' : '';
-            echo '<option value="'.(int)$z['id'].'" '.$sel.'>'.hx($z['nombre']).'</option>';
+          $estados = ['', 'recibido','revision','contacto_inicial','en_capacitacion','en_activacion','entregado_comercial','rechazado'];
+          foreach ($estados as $e) {
+            $label = $e === '' ? 'Estado' : $e;
+            $sel   = ($estado === $e) ? 'selected' : '';
+            echo "<option $sel>".hx($label)."</option>";
           }
         ?>
       </select>
     </div>
-
-    <div class="col-md-3">
-      <label class="form-label">Centro de costo</label>
-      <select name="cc_id" class="form-select">
-        <option value="">(sin centro)</option>
+    <div class="col-6 col-md-2">
+      <select class="form-select" name="perfil">
         <?php
-          $curC = (int)($row['cc_id'] ?? 0);
-          foreach($centros as $c){
-            $sel = ($curC === (int)$c['id']) ? 'selected' : '';
-            echo '<option value="'.(int)$c['id'].'" '.$sel.'>'.hx($c['nombre']).'</option>';
+          $perfiles = ['', 'TAT','EMP','ASESORA'];
+        foreach ($perfiles as $p) {
+            $label = $p === '' ? 'Perfil' : $p;
+            $sel   = ($perfil === $p) ? 'selected' : '';
+            echo "<option $sel>".hx($label)."</option>";
           }
         ?>
       </select>
     </div>
-
-    <div class="col-md-3">
-      <label class="form-label">Cargo (ID)</label>
-      <input name="cargo_id" class="form-control" inputmode="numeric" value="<?= hx($row['cargo_id'] ?? '') ?>" placeholder="Ej: 5">
+    <div class="col-6 col-md-2">
+      <input type="date" class="form-control" name="desde" value="<?= hx($desde) ?>" placeholder="Desde">
     </div>
-
-    <div class="col-md-4">
-      <label class="form-label">Email</label>
-      <input type="email" name="email" class="form-control" value="<?= hx($row['email'] ?? '') ?>">
+    <div class="col-6 col-md-2">
+      <input type="date" class="form-control" name="hasta" value="<?= hx($hasta) ?>" placeholder="Hasta">
     </div>
-
-    <div class="col-md-4">
-      <label class="form-label">Teléfono</label>
-      <input name="telefono" class="form-control" value="<?= hx($row['telefono'] ?? '') ?>">
-    </div>
-
-    <div class="col-md-4">
-      <label class="form-label">Dirección</label>
-      <input name="direccion" class="form-control" value="<?= hx($row['direccion'] ?? '') ?>">
-    </div>
-
-    <div class="col-12">
-      <label class="form-label">Comentarios</label>
-      <textarea name="comentarios" class="form-control" rows="3"></textarea>
-    </div>
-
-    <div class="col-12">
-      <label class="form-label">Hoja de vida (PDF/JPG/PNG)</label>
-      <input type="file" name="hoja_vida" class="form-control" accept=".pdf,.jpg,.jpeg,.png">
-      <small class="text-muted">Máx. 5 MB. Opcional al editar.</small>
-    </div>
-
-    <div class="col-12">
-      <button type="button" class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#mdlChecklist">
-        Checklist de documentos
-      </button>
-      <small class="text-muted ms-2">Marca los documentos entregados y asigna responsable del trámite.</small>
-    </div>
-
-    <div class="col-12 d-flex gap-2">
-      <a href="<?= tyt_url('cv/listar.php') ?>" class="btn btn-outline-secondary">Volver</a>
-      <button class="btn btn-primary">Guardar</button>
-    </div>
-
-    <!-- Modal Checklist -->
-    <div class="modal fade" id="mdlChecklist" tabindex="-1" aria-hidden="true">
-      <div class="modal-dialog modal-lg modal-dialog-scrollable">
-        <div class="modal-content">
-          <div class="modal-header">
-            <h5 class="modal-title">Checklist de documentos</h5>
-            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-          </div>
-          <div class="modal-body">
-            <?php if (!$reqs): ?>
-              <div class="alert alert-warning">Aún no hay requisitos configurados.</div>
-            <?php else: ?>
-              <div class="table-responsive">
-                <table class="table table-sm align-middle">
-                  <thead><tr><th>Ok</th><th>Documento</th><th>Obligatorio</th><th>Responsable</th></tr></thead>
-                  <tbody>
-                  <?php foreach($reqs as $rq):
-                    $rid = (int)$rq['id'];
-                    $prev = $checks[$rid] ?? null;
-                    $checked = ($prev && (int)$prev['cumple']===1) ? 'checked' : '';
-                    $respSel = (int)($prev['responsable_id'] ?? 0);
-                  ?>
-                    <tr>
-                      <td><input type="checkbox" name="req_chk[<?= $rid ?>]" value="1" <?= $checked ?>></td>
-                      <td><?= hx($rq['nombre']) ?></td>
-                      <td><?= ((int)$rq['obligatorio']===1) ? '<span class="badge text-bg-danger">Sí</span>' : 'No' ?></td>
-                      <td>
-                        <select name="req_resp[<?= $rid ?>]" class="form-select form-select-sm">
-                          <option value="">(sin asignar)</option>
-                          <?php foreach($usuarios as $u):
-                            $sel = ($respSel === (int)$u['id']) ? 'selected' : ''; ?>
-                            <option value="<?= (int)$u['id'] ?>" <?= $sel ?>><?= hx($u['nombre']) ?></option>
-                          <?php endforeach; ?>
-                        </select>
-                      </td>
-                    </tr>
-                  <?php endforeach; ?>
-                  </tbody>
-                </table>
-              </div>
-            <?php endif; ?>
-          </div>
-          <div class="modal-footer">
-            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cerrar</button>
-          </div>
-        </div>
-      </div>
+    <div class="col-12 col-md-1 d-grid">
+      <button class="btn btn-primary">Filtrar</button>
     </div>
   </form>
+
+  <!-- Acciones -->
+  <div class="mb-3 d-flex gap-2">
+    <?php if (!function_exists('user_has_perm') || user_has_perm('tyt.cv.submit')): ?>
+      <a class="btn btn-success" href="<?= tyt_url('cv/editar.php') ?>">+ Nueva HV</a>
+    <?php endif; ?>
+    <?php if (function_exists('user_has_perm') && user_has_perm('tyt.cv.export')): ?>
+      <a class="btn btn-outline-secondary" href="<?= tyt_url('reportes/index.php') ?>">Exportar</a>
+    <?php else: ?>
+      <button class="btn btn-outline-secondary" disabled>Exportar</button>
+    <?php endif; ?>
+  </div>
+
+  <?php if (isset($err)): ?>
+    <div class="alert alert-danger">Error: <?= hx($err) ?></div>
+  <?php endif; ?>
+
+  <?php if ($total === 0): ?>
+    <div class="alert alert-info">No hay resultados con los filtros actuales.</div>
+  <?php else: ?>
+
+    <?php $stCntAnx = $pdo->prepare("SELECT COUNT(*) FROM tyt_cv_anexo WHERE persona_id = :p"); ?>
+
+    <div class="table-responsive">
+      <table class="table table-sm align-middle">
+        <thead class="table-light">
+          <tr>
+            <th>Doc</th>
+            <th>Nombre</th>
+            <th>Perfil</th>
+            <th>Estado</th>
+            <th>Fecha estado</th>
+            <th class="text-center">Días</th>
+            <th class="text-center">Faltan</th>
+            <th class="text-center">Semáforo</th>
+            <th class="text-center">Docs</th>
+            <th>Zona/CC</th>
+            <th>Cargo</th>
+            <th>Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+        <?php foreach ($rows as $r):
+          $dias = (int)($r['dias'] ?? 0);
+          $faltan = (int)($r['faltan'] ?? 0);
+          $sem  = semaforo_class($dias, $sla, $vmin, $nmin);
+          $stCntAnx->execute([':p' => (int)$r['id']]);
+          $docs = (int)$stCntAnx->fetchColumn();
+        ?>
+          <tr>
+            <td><?= hx($r['doc_tipo'].' '.$r['doc_numero']) ?></td>
+            <td><?= hx($r['nombre_completo']) ?></td>
+            <td><span class="badge text-bg-secondary"><?= hx($r['perfil']) ?></span></td>
+            <td><?= badge_estado($r['estado']) ?></td>
+            <td><?= hx($r['fecha_estado']) ?></td>
+            <td class="text-center"><?= $dias ?></td>
+            <td class="text-center"><?= $faltan ?></td>
+            <td class="text-center">
+              <span class="badge <?= $sem ?> rounded-circle" style="width:12px;height:12px;display:inline-block;"></span>
+              <?php if ($faltan < $nmin): ?>
+                <span class="badge text-bg-danger ms-1">vencido</span>
+              <?php endif; ?>
+            </td>
+            <td class="text-center"><?= $docs ?></td>
+            <td><?= hx((string)$r['zona_id']) ?> / <?= hx((string)$r['cc_id']) ?></td>
+            <td><?= hx((string)$r['cargo_id']) ?></td>
+            <td class="d-flex flex-wrap gap-1">
+              <a class="btn btn-sm btn-outline-secondary" href="<?= tyt_url('cv/detalle.php') . '?id=' . (int)$r['id'] ?>">Ver</a>
+              <a class="btn btn-sm btn-outline-primary"   href="<?= tyt_url('cv/editar.php') . '?id=' . (int)$r['id'] ?>">Editar</a>
+              <?php if (function_exists('user_has_perm') && user_has_perm('tyt.cv.review')): ?>
+                <form method="post" action="<?= tyt_url('cv/estado.php') ?>" class="d-inline">
+                  <input type="hidden" name="id" value="<?= (int)$r['id'] ?>">
+                  <input type="hidden" name="to" value="revision">
+                  <button class="btn btn-sm btn-outline-info">Enviar a revisión</button>
+                </form>
+                <form method="post" action="<?= tyt_url('cv/estado.php') ?>" class="d-inline">
+                  <input type="hidden" name="id" value="<?= (int)$r['id'] ?>">
+                  <input type="hidden" name="to" value="rechazado">
+                  <button class="btn btn-sm btn-outline-danger">Rechazar</button>
+                </form>
+                <form method="post" action="<?= tyt_url('cv/estado.php') ?>" class="d-inline">
+                  <input type="hidden" name="id" value="<?= (int)$r['id'] ?>">
+                  <input type="hidden" name="to" value="entregado_comercial">
+                  <button class="btn btn-sm btn-outline-success">Entregar a Comercial</button>
+                </form>
+              <?php endif; ?>
+            </td>
+          </tr>
+        <?php endforeach; ?>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Paginación -->
+    <nav>
+      <ul class="pagination pagination-sm">
+        <li class="page-item <?= $page<=1?'disabled':'' ?>">
+          <a class="page-link" href="<?= hx($makeUrl(['page'=>max(1,$page-1)])) ?>">&laquo;</a>
+        </li>
+        <?php for($p=1; $p<=$pages; $p++):
+          if ($p<=2 || $p>$pages-2 || abs($p-$page)<=2):
+        ?>
+          <li class="page-item <?= $p===$page?'active':'' ?>">
+            <a class="page-link" href="<?= hx($makeUrl(['page'=>$p])) ?>"><?= $p ?></a>
+          </li>
+        <?php elseif ($p==3 && $page>5): ?>
+          <li class="page-item disabled"><span class="page-link">…</span></li>
+        <?php elseif ($p==$pages-2 && $page<$pages-4): ?>
+          <li class="page-item disabled"><span class="page-link">…</span></li>
+        <?php endif; endfor; ?>
+        <li class="page-item <?= $page>=$pages?'disabled':'' ?>">
+          <a class="page-link" href="<?= hx($makeUrl(['page'=>min($pages,$page+1)])) ?>">&raquo;</a>
+        </li>
+      </ul>
+    </nav>
+  <?php endif; ?>
 </div>
 <?php tyt_footer(); ?>
+```
