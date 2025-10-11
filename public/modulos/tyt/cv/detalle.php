@@ -93,6 +93,17 @@ tyt_nav();
                 <button class="btn btn-sm btn-outline-warning">Solicitar documentos (obligatorios faltantes)</button>
               </div>
             </form>
+            <?php if ($per['estado'] === 'pendiente_recepcion'): ?>
+            <hr>
+            <form method="post" action="<?= tyt_url('cv/recibir.php') ?>"
+                  class="d-inline"
+                  onsubmit="return confirm('¿Confirmar que se recibió en físico toda la documentación?');">
+              <input type="hidden" name="persona_id" value="<?= (int)$id ?>">
+              <button class="btn btn-success btn-sm">
+                <i class="bi bi-inboxes"></i> Recibir físico
+              </button>
+            </form>
+            <?php endif; ?>
           <?php else: ?>
             <div class="alert alert-secondary">No tienes permiso para cambiar estado.</div>
           <?php endif; ?>

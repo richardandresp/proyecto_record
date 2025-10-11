@@ -1,5 +1,8 @@
 <?php
 require_once __DIR__ . "/../includes/env_mod.php";
+require_once __DIR__ . "/../includes/env_mod.php";
+require_once __DIR__ . "/../includes/ui.php";
+
 if (!tyt_can('tyt.cv.export')) { http_response_code(403); exit('Acceso denegado'); }
 
 $pdo = getDB();

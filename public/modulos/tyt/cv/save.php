@@ -1,5 +1,8 @@
 ﻿<?php
 require_once __DIR__ . "/../includes/env_mod.php";
+require_once __DIR__ . "/../includes/env_mod.php";
+require_once __DIR__ . "/../includes/ui.php";
+
 if (function_exists("user_has_perm") && !user_has_perm("tyt.cv.submit")) {
   http_response_code(403); echo "Acceso denegado (tyt.cv.submit)"; exit;
 }
@@ -89,7 +92,7 @@ try {
   }
 
   // Si vino archivo de Hoja de Vida, lo guardamos
-  $puedeAdjuntar = !function_exists('user_has_perm') || user_has_perm('tyt.cv.attach');
+  $puedeAdjuntar = tyt_can('tyt.cv.attach');
 
   if ($puedeAdjuntar && !empty($_FILES['hoja_vida']) && $_FILES['hoja_vida']['error'] === UPLOAD_ERR_OK) {
     $file = $_FILES['hoja_vida'];
@@ -155,45 +158,44 @@ try {
     ]);
   }
 
-  // Mapa de área por defecto por requisito (para fallback)
-  $stDef = $pdo->prepare("SELECT id, responsable_area_id FROM tyt_cv_requisito WHERE activo=1");
-  $stDef->execute();
-  $defAreaByReq = [];
-  foreach ($stDef->fetchAll(PDO::FETCH_ASSOC) as $rdef) {
-    $defAreaByReq[(int)$rdef['id']] = $rdef['responsable_area_id'] !== null ? (int)$rdef['responsable_area_id'] : null;
+  // QUIEN GUARDA
+  $userId = (int)($_SESSION['usuario_id'] ?? 0);
+
+  // ESTADO inicial de la persona SI la crea un registrador (no GH/Admin)
+  $esGH = tyt_can('tyt.cv.review'); // GH/Admin tienen review
+  if (!$esGH) {
+    $pdo->prepare("UPDATE tyt_cv_persona SET estado='pendiente_recepcion', fecha_estado=NOW() WHERE id=:id")
+        ->execute([':id'=>$personaId]);
   }
 
-  // Guardar checklist (si envían)
+  // CHECKLIST: el registrador SOLO declara_entregado; GH/Admin validan (cumple)
   $req_chk  = $_POST['req_chk']  ?? [];   // [requisito_id] => 1/0
-  $req_area = $_POST['req_area'] ?? [];   // [requisito_id] => area_id
+  $req_area = $_POST['req_area'] ?? [];   // [requisito_id] => area_id (si GH lo asigna)
 
-  if (is_array($req_chk) || is_array($req_area)) {
-    $tipoPersona = ($perfil === 'ASESORA') ? 'asesora' : 'aspirante';
-    $stRq = $pdo->prepare("SELECT id FROM tyt_cv_requisito WHERE activo=1 AND (aplica_a=:t OR aplica_a='ambos')");
-    $stRq->execute([':t'=>$tipoPersona]);
-    $validReqIds = array_map(fn($r)=>(int)$r['id'], $stRq->fetchAll(PDO::FETCH_ASSOC));
+  $stRq = $pdo->prepare("SELECT id, responsable_area_id FROM tyt_cv_requisito WHERE activo=1");
+  $stRq->execute();
+  $defAreaByReq = [];
+  foreach ($stRq->fetchAll(PDO::FETCH_ASSOC) as $r) {
+    $defAreaByReq[(int)$r['id']] = $r['responsable_area_id'] !== null ? (int)$r['responsable_area_id'] : null;
+  }
 
-    $up = $pdo->prepare("
-      INSERT INTO tyt_cv_requisito_check (persona_id, requisito_id, cumple, responsable_area_id, verificado_por, verificado_en)
-      VALUES (:p, :r, :c, :area, :user, NOW())
-      ON DUPLICATE KEY UPDATE
-        cumple=VALUES(cumple),
-        responsable_area_id=VALUES(responsable_area_id),
-        verificado_por=VALUES(verificado_por),
-        verificado_en=VALUES(verificado_en)
-    ");
+  $up = $pdo->prepare("
+    INSERT INTO tyt_cv_requisito_check (persona_id, requisito_id, cumple, responsable_area_id, declara_entregado, declara_en, declara_por)
+    VALUES (:p, :r, 0, :area, :decl, NOW(), :u)
+    ON DUPLICATE KEY UPDATE
+      responsable_area_id = COALESCE(VALUES(responsable_area_id), responsable_area_id),
+      declara_entregado   = VALUES(declara_entregado),
+      declara_en          = VALUES(declara_en),
+      declara_por         = VALUES(declara_por)
+  ");
 
-    $userId = (int)($_SESSION['usuario_id'] ?? 0);
-    foreach ($validReqIds as $rid) {
-      $cumple = isset($req_chk[$rid]) ? 1 : 0;
-      $areaId = isset($req_area[$rid]) && $req_area[$rid] !== ''
-                ? (int)$req_area[$rid]
-                : ($defAreaByReq[$rid] ?? null); // fallback al área por defecto del requisito
-      $up->execute([
-        ':p'=>$personaId, ':r'=>$rid, ':c'=>$cumple,
-        ':area'=>$areaId, ':user'=>$userId
-      ]);
-    }
+  foreach ($defAreaByReq as $rid => $areaDef) {
+    $decl = isset($req_chk[$rid]) ? 1 : 0;                       // lo que marcó el registrador
+    $area = isset($req_area[$rid]) && $req_area[$rid]!=='' ? (int)$req_area[$rid] : $areaDef;  // GH puede fijar área
+    $up->execute([
+      ':p'=>$personaId, ':r'=>$rid, ':area'=>$area,
+      ':decl'=>$decl, ':u'=>$userId
+    ]);
   }
 
   $pdo->commit();

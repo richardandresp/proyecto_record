@@ -63,7 +63,8 @@ function tyt_header(string $title = 'T&T'): void { ?>
   <title><?= htmlspecialchars($title) ?></title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <!-- CDN Bootstrap (rápido). Luego lo puedes cambiar a tus assets del core -->
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css    ">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css      ">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css  ">
 </head>
 <body class="bg-light">
 <?php tyt_debug_ribbon(); ?>
@@ -121,7 +122,7 @@ function tyt_nav(): void { ?>
 
 /** Cierre body/html */
 function tyt_footer(): void { ?>
-  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js    "></script>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js      "></script>
 </body>
 </html>
 <?php }

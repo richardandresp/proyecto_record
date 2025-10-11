@@ -1,5 +1,8 @@
 <?php
 require_once __DIR__ . "/../includes/env_mod.php";
+require_once __DIR__ . "/../includes/env_mod.php";
+require_once __DIR__ . "/../includes/ui.php";
+
 if (function_exists("user_has_perm") && !user_has_perm("tyt.cv.view")) {
   http_response_code(403); echo "Acceso denegado (tyt.cv.view)"; exit;
 }
